@@ -6,6 +6,10 @@ echo Installation des dependances...
 pip install -r requirements.txt
 
 echo.
+echo Nettoyage des fichiers precedents...
+if exist CourSW.spec del CourSW.spec
+if exist build rmdir /s /q build
+
 echo Compilation de l'exe...
 python -m PyInstaller --onefile --windowed ^
   --name "CourSW" ^
