@@ -114,7 +114,7 @@ API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
 API_ANNOUNCE   = f"{SITE_URL}/api/cours/announce"
 
 TOKEN_FILE         = Path(os.environ.get("APPDATA", ".")) / "CourSW" / "token.json"
-CAPTURE_INTERVAL   = 2.0
+CAPTURE_INTERVAL   = 1.0
 HEARTBEAT_INTERVAL = 30
 
 # Zone capture : 27% gauche × 38% haut (s'adapte à toute résolution)
@@ -360,7 +360,12 @@ class Worker(threading.Thread):
     def run(self):
         self.on_log("Démarrage de la surveillance…")
         # Heartbeat immédiat au démarrage
-        hb = send_heartbeat(self.tok)
+        try:
+            hb = send_heartbeat(self.tok)
+            self.on_log(f"Heartbeat initial : {hb}")
+        except Exception as e:
+            self.on_log(f"❌ Erreur heartbeat initial : {e}")
+            hb = {}
         self.last_hb = time.time()
         if hb.get("update_required"):
             self.on_status("🔄 Mise à jour requise…")
@@ -369,6 +374,8 @@ class Worker(threading.Thread):
             if dl:
                 threading.Thread(target=_do_self_update, args=(dl, self.on_log), daemon=True).start()
             return
+        if not hb.get("ok"):
+            self.on_log(f"⚠️  Heartbeat refusé — token invalide ou site inaccessible")
         self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
         # Ouvre le site directement sur l'onglet Cours
         webbrowser.open(f"{SITE_URL}?section=cours")
