@@ -380,9 +380,11 @@ class Worker(threading.Thread):
         # Ouvre le site directement sur l'onglet Cours
         webbrowser.open(f"{SITE_URL}?section=cours")
 
+        self.on_log(f"Entrée boucle — running={self.running}")
         while self.running:
           try:
             now = time.time()
+            self.on_log(f"Tick boucle")
 
             # Heartbeat
             if now - self.last_hb > HEARTBEAT_INTERVAL:
