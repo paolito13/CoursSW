@@ -7,7 +7,7 @@ pip install -r requirements.txt
 
 echo.
 echo Compilation de l'exe...
-pyinstaller --onefile --windowed ^
+python -m PyInstaller --onefile --windowed ^
   --name "CourSW" ^
   --hidden-import "requests" ^
   --hidden-import "mss" ^
@@ -26,6 +26,8 @@ pyinstaller --onefile --windowed ^
   --collect-all "winsdk" ^
   --collect-all "cv2" ^
   --collect-all "numpy" ^
+  --hidden-import "pystray" ^
+  --collect-all "pystray" ^
   main.py
 
 echo.

@@ -4,4 +4,5 @@ Pillow
 pywin32
 opencv-python
 winsdk
+pystray
 pyinstaller

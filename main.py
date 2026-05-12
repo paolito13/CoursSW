@@ -17,6 +17,7 @@ REQUIRED = {
     "win32gui":   "pywin32",
     "cv2":        "opencv-python",
     "winsdk":     "winsdk",
+    "pystray":    "pystray",
 }
 
 def _bootstrap():
@@ -47,8 +48,13 @@ def _bootstrap():
     bar.pack(pady=12)
     root.update()
 
+    SLOW_PKGS = {"winsdk"}
+
     for i, pkg in enumerate(missing):
-        status.set(f"Installation de {pkg}…")
+        if pkg in SLOW_PKGS:
+            status.set(f"Compilation de {pkg} (5-10 min, ne pas fermer)…")
+        else:
+            status.set(f"Installation de {pkg}…")
         bar["value"] = int((i / len(missing)) * 90)
         root.update()
         subprocess.check_call(
@@ -80,9 +86,10 @@ import requests
 import mss
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import win32gui
 import win32con
+import pystray
 
 # ── Windows OCR (natif Windows 10/11, aucun téléchargement) ──────────────────
 try:
@@ -462,8 +469,18 @@ class LinkDialog(tk.Toplevel):
             save_token(tok)
             self.on_success(tok)
             self.destroy()
+            webbrowser.open(f"{SITE_URL}?section=cours")
         else:
             self.msg.set("❌ Code invalide ou expiré. Génères-en un nouveau sur le site.")
+
+
+def _make_tray_icon() -> Image.Image:
+    """Génère une icône simple pour le system tray."""
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse([4, 4, 60, 60], fill="#1a3a4a")
+    d.ellipse([18, 18, 46, 46], fill="#5de89e")
+    return img
 
 
 class App(tk.Tk):
@@ -474,37 +491,34 @@ class App(tk.Tk):
         self.resizable(False, False)
         self.configure(bg=BG)
 
-        # Icône Windows
-        try:
-            self.iconbitmap(default="")
-        except Exception: pass
+        # Cache dans la barre des tâches — visible seulement dans le tray
+        self.withdraw()
+        self.overrideredirect(False)
 
         self.worker: Worker | None = None
         self._build_ui()
+        self._setup_tray()
 
         tok = load_token()
         if tok:
             self._start(tok)
         else:
+            self._show_window()
             self._ask_link()
 
     def _build_ui(self):
-        # Header
         hdr = tk.Frame(self, bg=BG)
         hdr.pack(fill="x", padx=20, pady=(18, 0))
         tk.Label(hdr, text="📡 CourSW", font=("Segoe UI", 17, "bold"), bg=BG, fg=GOLD).pack(side="left")
         tk.Label(hdr, text="  Seven Wands — Observateur de cours",
                  font=("Segoe UI", 9), bg=BG, fg="#4a6a7a").pack(side="left")
 
-        # Status
         self.status_var = tk.StringVar(value="⏳ Démarrage…")
         tk.Label(self, textvariable=self.status_var, font=("Segoe UI", 10),
                  bg=BG, fg=GRN).pack(pady=(14, 0))
 
-        # Séparateur
         tk.Frame(self, bg="#1a2e38", height=1).pack(fill="x", padx=20, pady=8)
 
-        # Log
         lf = tk.Frame(self, bg=BG2, bd=0)
         lf.pack(fill="both", expand=True, padx=20)
         self.log_box = tk.Text(lf, bg=BG2, fg="#b0c8d0", font=("Consolas", 9),
@@ -514,7 +528,6 @@ class App(tk.Tk):
         sc.pack(side="right", fill="y")
         self.log_box.pack(fill="both", expand=True)
 
-        # Boutons bas
         bf = tk.Frame(self, bg=BG)
         bf.pack(fill="x", padx=20, pady=12)
         tk.Button(bf, text="🔗  Changer de compte", command=self._ask_link,
@@ -524,6 +537,30 @@ class App(tk.Tk):
                   command=lambda: webbrowser.open(SITE_URL),
                   bg="#1a2e38", fg=BLUE, relief="flat", font=("Segoe UI", 9), padx=10, pady=5
                   ).pack(side="left", padx=(8, 0))
+        tk.Button(bf, text="✕  Réduire",
+                  command=self._hide_window,
+                  bg="#1a2e38", fg="#6b8a9a", relief="flat", font=("Segoe UI", 9), padx=10, pady=5
+                  ).pack(side="right")
+
+    def _setup_tray(self):
+        menu = pystray.Menu(
+            pystray.MenuItem("📡 CourSW — Seven Wands", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Ouvrir", self._show_window, default=True),
+            pystray.MenuItem("Ouvrir le site", lambda: webbrowser.open(SITE_URL)),
+            pystray.MenuItem("Changer de compte", lambda: self.after(0, self._ask_link)),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quitter", self._quit),
+        )
+        self.tray = pystray.Icon("CourSW", _make_tray_icon(), "CourSW — Seven Wands", menu)
+        threading.Thread(target=self.tray.run, daemon=True).start()
+
+    def _show_window(self, *_):
+        self.after(0, self.deiconify)
+        self.after(0, self.lift)
+
+    def _hide_window(self):
+        self.withdraw()
 
     def _log(self, msg: str):
         self.log_box.configure(state="normal")
@@ -533,6 +570,7 @@ class App(tk.Tk):
 
     def _set_status(self, msg: str):
         self.status_var.set(msg)
+        self.tray.title = f"CourSW — {msg}"
 
     def _start(self, tok: str):
         if self.worker:
@@ -545,17 +583,24 @@ class App(tk.Tk):
         self.worker.start()
 
     def _ask_link(self):
+        self._show_window()
         LinkDialog(self, on_success=self._start)
+
+    def _quit(self):
+        if self.worker: self.worker.stop()
+        self.tray.stop()
+        self.destroy()
 
     def destroy(self):
         if self.worker: self.worker.stop()
+        try: self.tray.stop()
+        except Exception: pass
         super().destroy()
 
 
 def main():
-    # Lance en tâche de fond (pas de console)
     app = App()
-    app.protocol("WM_DELETE_WINDOW", app.destroy)
+    app.protocol("WM_DELETE_WINDOW", app._hide_window)  # croix = réduire dans le tray
     app.mainloop()
 
 
