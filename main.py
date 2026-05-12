@@ -381,6 +381,7 @@ class Worker(threading.Thread):
         webbrowser.open(f"{SITE_URL}?section=cours")
 
         while self.running:
+          try:
             now = time.time()
 
             # Heartbeat
@@ -436,6 +437,10 @@ class Worker(threading.Thread):
                 self.on_log(f"Erreur : {e}")
 
             time.sleep(CAPTURE_INTERVAL)
+
+          except Exception as e:
+            self.on_log(f"❌ Erreur boucle : {type(e).__name__}: {e}")
+            time.sleep(2)
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
 BG   = "#0d1a1e"
