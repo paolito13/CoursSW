@@ -15,7 +15,6 @@ REQUIRED = {
     "mss":        "mss",
     "PIL":        "Pillow",
     "win32gui":   "pywin32",
-    "cv2":        "opencv-python",
     "winsdk":     "winsdk",
     "pystray":    "pystray",
     "psutil":     "psutil",
@@ -85,8 +84,6 @@ from pathlib import Path
 
 import requests
 import mss
-import cv2
-import numpy as np
 from PIL import Image, ImageDraw
 import win32gui
 import win32con
@@ -123,10 +120,6 @@ HEARTBEAT_INTERVAL = 30
 CAP_RIGHT  = 0.27
 CAP_BOTTOM = 0.38
 
-# Couleur de la boîte d'annonce FiveM — bleu foncé semi-transparent
-# Plage large pour couvrir les variations selon résolution/gamma
-BLUE_LOW  = np.array([90,  20,  20])
-BLUE_HIGH = np.array([140, 180, 120])
 
 # ── Windows OCR natif ─────────────────────────────────────────────────────────
 async def _win_ocr_async(pil_img: Image.Image) -> str:
@@ -178,41 +171,6 @@ def ocr_image(pil_img: Image.Image) -> str:
 
     return ""
 
-# ── Détection de la boîte d'annonce par couleur ───────────────────────────────
-def find_announcement_box(img_np: np.ndarray) -> np.ndarray | None:
-    """
-    Cherche la boîte bleue caractéristique des annonces FiveM.
-    Retourne le crop PIL si trouvé, None sinon.
-    """
-    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
-    mask = cv2.inRange(hsv, BLUE_LOW, BLUE_HIGH)
-
-    # Morphologie pour consolider la zone
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.dilate(mask, kernel, iterations=3)
-
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-
-    # Prend le plus grand contour
-    c = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(c)
-    h, w = img_np.shape[:2]
-
-    # Filtre les trop petits (bruit) et trop grands (toute l'image)
-    if area < (w * h * 0.001) or area > (w * h * 0.9):
-        return None
-
-    x, y, bw, bh = cv2.boundingRect(c)
-    # Marge
-    pad = 8
-    x1 = max(0, x - pad)
-    y1 = max(0, y - pad)
-    x2 = min(w, x + bw + pad)
-    y2 = min(h, y + bh + pad)
-
-    return img_np[y1:y2, x1:x2]
 
 # ── FiveM window detection ────────────────────────────────────────────────────
 FIVEM_EXES = {"fivem.exe", "fivem_b3095_gtaprocess.exe", "gta5.exe", "gtavlauncher.exe"}
@@ -433,12 +391,9 @@ class Worker(threading.Thread):
 
             try:
                 frame = capture_region(rect)
-                box   = find_announcement_box(frame)
-
-                if box is not None:
-                    pil = Image.fromarray(box)
-                    text = ocr_image(pil)
-                    ann  = parse_announcement(text)
+                pil   = Image.fromarray(frame)
+                text  = ocr_image(pil)
+                ann   = parse_announcement(text) if text.strip() else None
 
                     if ann:
                         h = ann_hash(ann)
