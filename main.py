@@ -215,7 +215,7 @@ def capture_region(rect):
     }
     with mss.mss() as sct:
         shot = sct.grab(region)
-        return np.array(Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX"))
+        return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 # ── Parsing OCR → annonce structurée ─────────────────────────────────────────
 def parse_announcement(text: str) -> dict | None:
@@ -390,8 +390,7 @@ class Worker(threading.Thread):
             wh = rect[3] - rect[1]
 
             try:
-                frame = capture_region(rect)
-                pil   = Image.fromarray(frame)
+                pil   = capture_region(rect)
                 text  = ocr_image(pil)
                 ann   = parse_announcement(text) if text.strip() else None
 
