@@ -123,9 +123,10 @@ HEARTBEAT_INTERVAL = 30
 CAP_RIGHT  = 0.27
 CAP_BOTTOM = 0.38
 
-# Couleur bleue des annonces FiveM (HSV range)
-BLUE_LOW  = np.array([95,  80,  80])
-BLUE_HIGH = np.array([130, 255, 255])
+# Couleur de la boîte d'annonce FiveM — bleu foncé semi-transparent
+# Plage large pour couvrir les variations selon résolution/gamma
+BLUE_LOW  = np.array([90,  20,  20])
+BLUE_HIGH = np.array([140, 180, 120])
 
 # ── Windows OCR natif ─────────────────────────────────────────────────────────
 async def _win_ocr_async(pil_img: Image.Image) -> str:
@@ -200,7 +201,7 @@ def find_announcement_box(img_np: np.ndarray) -> np.ndarray | None:
     h, w = img_np.shape[:2]
 
     # Filtre les trop petits (bruit) et trop grands (toute l'image)
-    if area < (w * h * 0.005) or area > (w * h * 0.5):
+    if area < (w * h * 0.001) or area > (w * h * 0.9):
         return None
 
     x, y, bw, bh = cv2.boundingRect(c)
