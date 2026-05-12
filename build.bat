@@ -28,6 +28,7 @@ python -m PyInstaller --onefile --windowed ^
   --collect-all "numpy" ^
   --hidden-import "pystray" ^
   --collect-all "pystray" ^
+  --hidden-import "psutil" ^
   main.py
 
 echo.

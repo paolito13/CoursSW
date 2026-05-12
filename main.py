@@ -18,6 +18,7 @@ REQUIRED = {
     "cv2":        "opencv-python",
     "winsdk":     "winsdk",
     "pystray":    "pystray",
+    "psutil":     "psutil",
 }
 
 def _bootstrap():
@@ -89,6 +90,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import win32gui
 import win32con
+import win32process
 import pystray
 
 # ── Windows OCR (natif Windows 10/11, aucun téléchargement) ──────────────────
@@ -212,18 +214,33 @@ def find_announcement_box(img_np: np.ndarray) -> np.ndarray | None:
     return img_np[y1:y2, x1:x2]
 
 # ── FiveM window detection ────────────────────────────────────────────────────
+FIVEM_EXES = {"fivem.exe", "fivem_b3095_gtaprocess.exe", "gta5.exe", "gtavlauncher.exe"}
+
 def find_fivem_window():
     result = []
     def cb(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd):
             return
-        title = win32gui.GetWindowText(hwnd).lower()
-        if "fivem" in title or "five m" in title or "gta" in title:
-            rect = win32gui.GetWindowRect(hwnd)
-            w = rect[2] - rect[0]
-            h = rect[3] - rect[1]
-            if w > 400 and h > 300:
-                result.append((hwnd, rect))
+        if not win32gui.GetWindowText(hwnd):
+            return
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            import psutil
+            proc_name = psutil.Process(pid).name().lower()
+            if not any(exe in proc_name for exe in FIVEM_EXES):
+                # Fallback : titre de fenêtre
+                title = win32gui.GetWindowText(hwnd).lower()
+                if not ("fivem" in title or "gta" in title):
+                    return
+        except Exception:
+            title = win32gui.GetWindowText(hwnd).lower()
+            if not ("fivem" in title or "gta" in title):
+                return
+        rect = win32gui.GetWindowRect(hwnd)
+        w = rect[2] - rect[0]
+        h = rect[3] - rect[1]
+        if w > 400 and h > 300:
+            result.append((hwnd, rect))
     win32gui.EnumWindows(cb, None)
     result.sort(key=lambda x: (x[1][2]-x[1][0]) * (x[1][3]-x[1][1]), reverse=True)
     return result[0] if result else None
@@ -407,6 +424,7 @@ class Worker(threading.Thread):
                 self.on_log("FiveM non détecté, nouvelle tentative dans 5s…")
                 time.sleep(5)
                 continue
+            self.on_log(f"FiveM détecté : rect={win[1]}")
 
             _, rect = win
             ww = rect[2] - rect[0]
