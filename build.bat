@@ -1,0 +1,33 @@
+@echo off
+echo === CourSW Build ===
+echo.
+
+echo Installation des dependances...
+pip install -r requirements.txt
+
+echo.
+echo Compilation de l'exe...
+pyinstaller --onefile --windowed ^
+  --name "CourSW" ^
+  --hidden-import "requests" ^
+  --hidden-import "mss" ^
+  --hidden-import "PIL" ^
+  --hidden-import "PIL.Image" ^
+  --hidden-import "win32gui" ^
+  --hidden-import "win32con" ^
+  --hidden-import "win32process" ^
+  --hidden-import "cv2" ^
+  --hidden-import "numpy" ^
+  --hidden-import "winsdk" ^
+  --hidden-import "winsdk.windows.media.ocr" ^
+  --hidden-import "winsdk.windows.graphics.imaging" ^
+  --hidden-import "winsdk.windows.storage.streams" ^
+  --hidden-import "asyncio" ^
+  --collect-all "winsdk" ^
+  --collect-all "cv2" ^
+  --collect-all "numpy" ^
+  main.py
+
+echo.
+echo Build termine ! L'exe se trouve dans dist\CourSW.exe
+pause
