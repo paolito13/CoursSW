@@ -359,6 +359,20 @@ class Worker(threading.Thread):
 
     def run(self):
         self.on_log("Démarrage de la surveillance…")
+        # Heartbeat immédiat au démarrage
+        hb = send_heartbeat(self.tok)
+        self.last_hb = time.time()
+        if hb.get("update_required"):
+            self.on_status("🔄 Mise à jour requise…")
+            self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
+            dl = hb.get("download_url", "")
+            if dl:
+                threading.Thread(target=_do_self_update, args=(dl, self.on_log), daemon=True).start()
+            return
+        self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
+        # Ouvre le site directement sur l'onglet Cours
+        webbrowser.open(f"{SITE_URL}?section=cours")
+
         while self.running:
             now = time.time()
 
@@ -469,7 +483,6 @@ class LinkDialog(tk.Toplevel):
             save_token(tok)
             self.on_success(tok)
             self.destroy()
-            webbrowser.open(f"{SITE_URL}?section=cours")
         else:
             self.msg.set("❌ Code invalide ou expiré. Génères-en un nouveau sur le site.")
 
