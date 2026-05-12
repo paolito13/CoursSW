@@ -395,16 +395,16 @@ class Worker(threading.Thread):
                 text  = ocr_image(pil)
                 ann   = parse_announcement(text) if text.strip() else None
 
-                    if ann:
-                        h = ann_hash(ann)
-                        if now - self.seen.get(h, 0) > 300:
-                            self.seen[h] = now
-                            ok = send_announcement(self.tok, ann)
-                            label = "cours" if ann["type"] == "cours" else "générique"
-                            self.on_log(
-                                f"{'✅' if ok else '⚠️'} Annonce {label} "
-                                f"({ann.get('author','?')}) : {ann.get('message','')[:45]}…"
-                            )
+                if ann:
+                    h = ann_hash(ann)
+                    if now - self.seen.get(h, 0) > 300:
+                        self.seen[h] = now
+                        ok = send_announcement(self.tok, ann)
+                        label = "cours" if ann["type"] == "cours" else "générique"
+                        self.on_log(
+                            f"{'✅' if ok else '⚠️'} Annonce {label} "
+                            f"({ann.get('author','?')}) : {ann.get('message','')[:45]}…"
+                        )
 
                 # Nettoyage hashes > 10 min
                 self.seen = {k: v for k, v in self.seen.items() if now - v < 600}
