@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.0.0"
+VERSION        = "1.2.3"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -116,9 +116,10 @@ TOKEN_FILE         = Path(os.environ.get("APPDATA", ".")) / "CourSW" / "token.js
 CAPTURE_INTERVAL   = 1.0
 HEARTBEAT_INTERVAL = 30
 
-# Zone capture : 27% gauche × 38% haut (s'adapte à toute résolution)
-CAP_RIGHT  = 0.27
-CAP_BOTTOM = 0.38
+# Zone capture initiale : large pour couvrir toute résolution
+# Le popup est ensuite détecté et rogné automatiquement par couleur
+CAP_RIGHT  = 0.38
+CAP_BOTTOM = 0.55
 
 
 # ── Windows OCR natif ─────────────────────────────────────────────────────────
@@ -153,11 +154,20 @@ async def _win_ocr_async(pil_img: Image.Image) -> str:
     result = await engine.recognize_async(bitmap)
     return result.text if result else ""
 
+def _preprocess(pil_img: Image.Image) -> Image.Image:
+    """Agrandissement ×2 uniquement — évite les artefacts du contraste sur le texte FiveM."""
+    w, h = pil_img.size
+    return pil_img.resize((w * 2, h * 2), Image.LANCZOS)
+
+
 def ocr_image(pil_img: Image.Image) -> str:
+    img = _preprocess(pil_img)
     if _USE_WIN_OCR:
         try:
             loop = asyncio.new_event_loop()
-            text = loop.run_until_complete(_win_ocr_async(pil_img))
+            text = loop.run_until_complete(
+                asyncio.wait_for(_win_ocr_async(img), timeout=3.0)
+            )
             loop.close()
             return text
         except Exception:
@@ -165,7 +175,7 @@ def ocr_image(pil_img: Image.Image) -> str:
 
     if _USE_TESSERACT:
         try:
-            return pytesseract.image_to_string(pil_img, lang="fra+eng")
+            return pytesseract.image_to_string(img, lang="fra+eng")
         except Exception:
             pass
 
@@ -204,6 +214,41 @@ def find_fivem_window():
     result.sort(key=lambda x: (x[1][2]-x[1][0]) * (x[1][3]-x[1][1]), reverse=True)
     return result[0] if result else None
 
+def _detect_popup_crop(pil_img: Image.Image) -> Image.Image:
+    """
+    Détecte automatiquement le bord droit du popup d'annonce FiveM
+    par sa couleur bleue distinctive (fond sombre bleu).
+    Rogne l'image pour n'OCR que le popup, quelle que soit la résolution.
+    """
+    w, h = pil_img.size
+    step = max(1, h // 50)   # ~50 lignes de sondage
+    best_right = 0
+
+    # Scan de droite à gauche : cherche la colonne la plus à droite
+    # contenant des pixels "bleu foncé" typiques du popup FiveM
+    # Critère : R < 90, G < 115, B > 100, et B nettement > R
+    for x in range(w - 1, 10, -1):
+        hits = 0
+        for y in range(0, h, step):
+            try:
+                px = pil_img.getpixel((x, y))
+                r, g, b = px[0], px[1], px[2]
+                if r < 90 and g < 115 and b > 100 and b > r + 30:
+                    hits += 1
+            except Exception:
+                pass
+        if hits >= 3:
+            best_right = x
+            break
+
+    if best_right > 80:
+        # Ajoute 30px de marge droite et recadre
+        crop_right = min(w, best_right + 30)
+        return pil_img.crop((0, 0, crop_right, h))
+    # Fallback : image entière
+    return pil_img
+
+
 def capture_region(rect):
     wx, wy, wx2, wy2 = rect
     ww, wh = wx2 - wx, wy2 - wy
@@ -215,49 +260,294 @@ def capture_region(rect):
     }
     with mss.mss() as sct:
         shot = sct.grab(region)
-        return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    return _detect_popup_crop(img)
 
 # ── Parsing OCR → annonce structurée ─────────────────────────────────────────
+
+# Salles officielles + leurs variantes OCR / abréviations
+_ROOMS: list[tuple[str, list[str]]] = [
+    ('La Cabane',                  ['cabane']),
+    ('Salle CMS',                  ['cms']),
+    ('Salle Créatures Magiques',   ['creature', 'créature', 'creatur', 'magique', 'magiques']),
+    ('Serre 1',                    ['serre 1', 'serre1']),
+    ('Serre 2',                    ['serre 2', 'serre2']),
+    ('Serre 3',                    ['serre 3', 'serre3']),
+    ('Serre 4',                    ['serre 4', 'serre4']),
+    ('Salle DCFM (toilettes)',     ['dcfm', 'toilette']),
+    ('Salle Musique',              ['musique']),
+    ('Salle Généraliste',          ['generaliste', 'généraliste', 'general']),
+    ('Salle Potions',              ['potion', 'potions']),
+    ('Salle de Duel',              ['duel']),
+    ('Salle de Littérature',       ['litter', 'littér', 'littera']),
+    ("Salle d'Etude de golmue",    ['etude', 'étude', 'golmue', 'golmu', 'study']),
+]
+
+def _normalize_room(raw: str) -> str:
+    """Mappe n'importe quelle variante OCR vers la salle canonique."""
+    if not raw:
+        return raw
+    import unicodedata as _ud, re as _re
+    key = _ud.normalize('NFD', raw.lower().strip())
+    key = ''.join(c for c in key if _ud.category(c) != 'Mn')  # retire accents
+    # Serre avec numéro : détection directe
+    m = _re.search(r'serre\s*(\d)', key)
+    if m:
+        return f'Serre {m.group(1)}'
+    best_label, best_score = raw, 0
+    for label, keywords in _ROOMS:
+        score = sum(1 for kw in keywords if kw in key)
+        if score > best_score:
+            best_label, best_score = label, score
+    return best_label if best_score > 0 else raw
+
+
+# Matières officielles + leurs variantes OCR / abréviations
+_SUBJECTS: list[tuple[str, list[str]]] = [
+    ('Alchimie - Botanique', ['alchimie', 'botanique']),
+    ('Sorts',                ['sort', 'sorts']),
+    ('Potions',              ['potion', 'potions']),
+    ('Histoire de la Magie', ['histoire', 'histoires', 'hdm', 'hmd']),
+    ('Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques']),
+    ('Club',                 ['club']),
+    ('Divers',               ['divers']),
+]
+
+def _normalize_subject(raw: str) -> str:
+    """Mappe n'importe quelle variante OCR vers la matière canonique."""
+    if not raw:
+        return raw
+    import unicodedata as _ud2
+    key = _ud2.normalize('NFD', raw.lower().strip())
+    key = ''.join(c for c in key if _ud2.category(c) != 'Mn')
+    best_label, best_score = raw, 0
+    for label, keywords in _SUBJECTS:
+        score = sum(1 for kw in keywords if kw in key)
+        if score > best_score:
+            best_label, best_score = label, score
+    return best_label if best_score > 0 else raw
+
+
+# Mots qui signalent la fin du nom d'auteur
+_STOP = (
+    r'[Cc]ours|[Tt]outes?|[Tt]ous|[Ll]es?|[Dd]ans|[Aa]ux?|[Dd]es?'
+    r'|[Uu]ne?|[Ee]n|[Ss]a[lr][le]|[Ss]erre|[Pp]our|[Aa]vec|[Dd]e\b'
+    # Matières / mots-clés FiveM fréquents après le nom
+    r'|[Ss]orts?|[Pp]otions?|[Dd]ivers|[Hh][Dd][Mm]|[Aa]lchimie'
+    r'|[Bb]otanique|[Aa]stronomie|[Tt]ransfiguration|[Mm][ée]tamorphose'
+    r'|[Dd][ée]fense|[Dd]ivination|[Aa]rithmancie|[Ss]oins'
+    r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature'
+    r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
+)
+
+# Année : tolère les typos OCR (ann→ar, ème→eme, etc.)
+_YEAR_RE = (
+    r'(?:toutes?\s+(?:les\s+)?[aA][a-zà-ü]{2,6}s?'     # toutes les années
+    r'|\d+\s*(?:[eèê]me?|[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'  # 4e/4ème/4eme/6ème ann(ée|arée)
+    r'|[1I]\s*(?:[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'    # 1ère / 1ere année
+    r')'
+)
+
+
+def _clean_noise(s: str) -> str:
+    """Supprime les caractères parasites OCR (lettres isolées, pas les mots courts utiles)."""
+    # Ne supprime que les lettres VRAIMENT isolées (1 seul char), pas "la", "de", "le"…
+    s = re.sub(r'(?<![a-zA-ZÀ-ü])[a-zA-Z](?![a-zA-ZÀ-ü])', ' ', s)
+    return re.sub(r'\s{2,}', ' ', s).strip()
+
+
+# Pivot strict : mots spécifiques aux salles, peu susceptibles d'apparaître dans les titres
+# Sa[lru][lei]? couvre "Salle", "Sale", "Saue" (OCR "ll"→"u"), "Sall"…
+_STRICT_ROOM = re.compile(
+    r'(?:Sa[lru][lei]e?|S[ae]rre|Cabane|Donjon|For[eê]t|Terrain\s+[A-ZÀ-Üa-zà-ü]|Tour\s+[A-ZÀ-Üa-zà-ü])',
+    re.IGNORECASE
+)
+
+# Pivot large : utilisé UNIQUEMENT dans la section après §SPLIT§
+_WIDE_ROOM = re.compile(
+    r'(?:Sa[lr][le]e?|Serre|Cabane|Donjon|For[eê]t'
+    r"|La\s+[A-ZÀ-Ü]|Le\s+[A-ZÀ-Ü]|Les\s+[A-ZÀ-Ü]|L'[A-ZÀ-Ü]"
+    r'|Au[x]?\s+[A-ZÀ-Ü]|Grand[e]?\s+[A-ZÀ-Ü]|Petit[e]?\s+[A-ZÀ-Ü]'
+    r'|Tour\s+[A-ZÀ-Ü]|Terrain\s+[A-ZÀ-Ü])'
+)
+
+
+def _split_details(details: str, wide: bool = False) -> tuple[str, str]:
+    """Extrait (room, subject) depuis la section détails."""
+    details = _clean_noise(details)
+
+    # Essai 1 : emoji 📖
+    m_icon = re.search(r'📖\s*(.+?)$', details)
+    if m_icon:
+        return _clean_noise(details[:m_icon.start()]), m_icon.group(1).strip()
+
+    # Essai 2 : groupe trailing = sujet (1-3 mots, commence par majuscule)
+    m_subj = re.search(
+        r'(?:\s|^)([A-ZÀ-Ü][a-zA-Zà-ü\-]+(?:\s+[a-zà-ü]\w*){0,2})\s*$',
+        details
+    )
+    if m_subj and len(m_subj.group(1)) >= 3:
+        return _clean_noise(details[:m_subj.start()]), m_subj.group(1).strip()
+
+    return details, ""
+
+
 def parse_announcement(text: str) -> dict | None:
     if not text.strip():
         return None
 
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    joined = " ".join(lines)
+    joined = " ".join(text.split())
+
+    # ── Normalisation OCR ──────────────────────────────────────────────────────
+    # Supprime les overlays de performance (MSI Afterburner, RivaTuner, etc.)
+    joined = re.sub(r'\bPL\s*:\s*', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bCPU\s*:\s*[\d/\., ]+', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bGPU\s*:\s*[\d/\., ]*', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bFPS\s*:\s*[\d/\., ]+', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bRAM\s*:\s*[\d/\., ]+', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bVRAM\s*:\s*[\d/\., ]+', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bIO\b', '10', joined)
+    joined = re.sub(r'\bl0\b', '10', joined)
+    # Barre séparatrice FiveM → marqueur §SPLIT§ (pivot le plus fiable)
+    joined = re.sub(r'[─━]{3,}', ' §SPLIT§ ', joined)
+    joined = re.sub(r'-{5,}', ' §SPLIT§ ', joined)
+    joined = re.sub(r'\s\.\s', ' ', joined)
+    # OCR lit souvent "/" comme " I " dans les titres FiveM
+    joined = re.sub(r'(?<=[A-Za-zÀ-ü0-9])\s+I\s+(?=[A-ZÀ-Üa-zà-ü0-9])', ' / ', joined)
+    # OCR fusionne "/ 3" en "13" (I+digit sans espace) → on restaure l'ordinal
+    joined = re.sub(r'\b1(\d\s*(?:[eèê]me?|[eè]re?|e)\b)', r'\1', joined)
 
     is_cours   = bool(re.search(r'ANNONCE\s+DE\s+COURS', joined, re.IGNORECASE))
-    is_general = bool(re.search(r'ANNONCE\s+DE\s+\w', joined, re.IGNORECASE)) and not is_cours
+    is_general = bool(re.search(r'ANNONCE\s+(?!DE\s+COURS)[A-ZÀ-Ü]', joined))
 
     if not is_cours and not is_general:
         return None
 
-    author = ""
+    # ══════════════════════════════════════════════════════════════════════════
     if is_cours:
-        m = re.search(r'[Pp]ar\s+([A-ZÀ-Ü][a-zA-ZÀ-ü\s\-]+?)(?:\s{2,}|\n|$)', joined)
-        if m: author = m.group(1).strip()
+        m = re.search(r'ANNONCE\s+DE\s+COURS\s*(.*)', joined, re.IGNORECASE)
+        payload = m.group(1).strip() if m else joined
+
+        # ── Auteur ────────────────────────────────────────────────────────────
+        # Token nom : mot commençant par majuscule (Dupont) OU initiale seule (L / L.)
+        # S'arrête aux abbréviations tout-caps (HDM, HMD…) et aux mots _STOP
+        _NAME_TOK = r'(?:[A-ZÀ-Ü][a-zà-ü\'\-]+|[A-ZÀ-Ü]\.?(?=\s|$))'
+        _NAME_STOP = rf'(?:{_STOP}|[A-ZÀ-Ü]{{2,}}(?![a-zà-ü]))'
+        author = ""
+        m_a = re.search(
+            rf'[Pp][ao]?r\.?\s+(?:(?:Pr|Dr|Mme|Mlle|M)\.?\s+)?'
+            rf'({_NAME_TOK}'
+            rf'(?:\s+(?!(?:{_NAME_STOP})\b){_NAME_TOK}){{0,2}})',
+            payload
+        )
+        if m_a:
+            author = m_a.group(1).strip()
+            # Sécurité : retire les mots _STOP qui auraient glissé en fin de nom
+            author = re.sub(rf'\s+(?:{_STOP})$', '', author).strip()
+            payload = payload[m_a.end():].strip()
+
+        # ── Séparation description / détails ──────────────────────────────────
+        message = ""
+        year    = ""
+        delay   = ""
+        room    = ""
+        subject = ""
+
+        if '§SPLIT§' in payload:
+            # Cas idéal : séparateur FiveM → split propre
+            parts = payload.split('§SPLIT§', 1)
+            message = parts[0].strip(" -—(,:")
+            details_raw = parts[1].split('§SPLIT§')[0].strip()
+            m_d = re.search(r'[Dd]ans\s+\d+\s+\w+(?:\s*\([^)]*\))?', details_raw)
+            if m_d:
+                delay = m_d.group(0)
+                details_raw = details_raw[:m_d.start()].strip()
+            year_hits = list(re.finditer(_YEAR_RE, details_raw, re.IGNORECASE))
+            if year_hits:
+                last_y = year_hits[-1]
+                year = last_y.group(0).strip()
+                details_raw = (details_raw[:last_y.start()] + " " + details_raw[last_y.end():]).strip()
+            room, subject = _split_details(details_raw, wide=True)
+            # Si le message commence par "Sujet – Titre" (ex: "Divers – EDG 35 : …"),
+            # retire le préfixe sujet du message puisqu'il est déjà dans le tag subject
+            if subject:
+                m_subj_prefix = re.match(
+                    rf'^{re.escape(subject)}\s*[-–—]\s*', message, re.IGNORECASE
+                )
+                if m_subj_prefix:
+                    message = message[m_subj_prefix.end():].strip(" -—():,")
+
+        else:
+            # Sans séparateur : DERNIÈRE occurrence du pivot strict
+            # (évite de couper sur un "Salle" écrit dans le titre de la description)
+            strict_hits = list(_STRICT_ROOM.finditer(payload))
+            if strict_hits:
+                last_pivot = strict_hits[-1]
+                # Récupère l'article précédent si présent (ex: "La Cabane")
+                pre = payload[:last_pivot.start()].rstrip()
+                m_art = re.search(r'(?:La|Le|Les|Au[x]?|De|Du|L\')\s*$', pre, re.IGNORECASE)
+                pivot_start = m_art.start() if m_art else last_pivot.start()
+                message = payload[:pivot_start].strip(" -—(,:")
+                details_raw = payload[pivot_start:]
+                m_d = re.search(r'[Dd]ans\s+\d+\s+\w+(?:\s*\([^)]*\))?', details_raw)
+                if m_d:
+                    delay = m_d.group(0)
+                    details_raw = details_raw[:m_d.start()].strip()
+                year_hits = list(re.finditer(_YEAR_RE, details_raw, re.IGNORECASE))
+                if year_hits:
+                    last_y = year_hits[-1]
+                    year = last_y.group(0).strip()
+                    details_raw = (details_raw[:last_y.start()] + " " + details_raw[last_y.end():]).strip()
+                room, subject = _split_details(details_raw)
+            else:
+                # Aucun pivot : tout est message, delay/year extraits de la fin
+                m_d = re.search(r'[Dd]ans\s+\d+\s+\w+(?:\s*\([^)]*\))?', payload)
+                if m_d:
+                    delay = m_d.group(0)
+                    payload = payload[:m_d.start()].strip()
+                year_hits = list(re.finditer(_YEAR_RE, payload, re.IGNORECASE))
+                if year_hits:
+                    year = year_hits[-1].group(0).strip()
+                message = payload.strip(" -—():"  ",")
+
+        # Rejette faux positifs OCR
+        if len(author) < 3 or len(message) < 8:
+            return None
+
+        ann: dict = {"type": "cours", "author": author, "message": message}
+        if delay:   ann["delay"]   = delay
+        if year:    ann["year"]    = year
+        if room:    ann["room"]    = _normalize_room(room)
+        if subject: ann["subject"] = _normalize_subject(subject)
+        return ann
+
+    # ══════════════════════════════════════════════════════════════════════════
     else:
-        m = re.search(r'ANNONCE\s+DE\s+([A-ZÀ-Ü][a-zA-ZÀ-ü\s\-]+?)(?:\s{2,}|\n|$)', joined, re.IGNORECASE)
-        if m: author = m.group(1).strip()
+        # Format FiveM : "[NOM ANNONCEUR] ANNONCE DE [CORPS DU MESSAGE]"
+        # → auteur = AVANT "ANNONCE DE", message = APRÈS
+        m = re.search(r'ANNONCE\s+DE\s+(?!COURS\b)', joined, re.IGNORECASE)
+        if not m:
+            return None
 
-    # Filtre les lignes d'en-tête pour récupérer le message
-    skip_re = re.compile(r'annonce de cours|annonce de|^par\s', re.IGNORECASE)
-    body = [l for l in lines if not skip_re.search(l) and author.lower() not in l.lower()]
+        # Auteur : derniers tokens capitalisés avant "ANNONCE DE"
+        pre = joined[:m.start()].strip()
+        _GEN_TOK = r'[A-ZÀ-Ü][A-ZÀ-Üa-zà-ü\-]+'
+        m_a = re.search(
+            rf'({_GEN_TOK}(?:\s+{_GEN_TOK}){{0,2}})\s*$',
+            pre
+        )
+        author = m_a.group(1).strip() if m_a else ""
 
-    delay   = next((l for l in body if re.search(r'dans\s+\d+\s+min', l, re.IGNORECASE)), None)
-    year    = next((l for l in body if re.search(r'\d\s*[eè]me\s+ann', l, re.IGNORECASE)), None)
-    body    = [l for l in body if l not in (delay or "", year or "")]
-    message = " ".join(body).strip()
+        # Message : tout ce qui suit "ANNONCE DE"
+        message = joined[m.end():].strip(" -—,[]")
 
-    if not message and not author:
-        return None
-
-    ann: dict = {"type": "cours" if is_cours else "general", "author": author, "message": message}
-    if delay: ann["delay"] = delay
-    if year:  ann["year"]  = year
-    return ann
+        if not message:
+            return None
+        return {"type": "general", "author": author, "message": message}
 
 def ann_hash(ann: dict) -> str:
-    return hashlib.md5(f"{ann['type']}:{ann.get('author','')}:{ann.get('message','')}".encode()).hexdigest()
+    # Hash sur type+auteur uniquement pour absorber les variations OCR du message
+    return hashlib.md5(f"{ann['type']}:{ann.get('author','').lower().strip()}".encode()).hexdigest()
 
 # ── Token ─────────────────────────────────────────────────────────────────────
 def load_token() -> str | None:
@@ -278,10 +568,14 @@ def send_heartbeat(tok: str) -> dict:
         return r.json() if r.ok or r.status_code == 200 else {}
     except Exception: return {}
 
-def send_announcement(tok: str, ann: dict) -> bool:
+def send_announcement(tok: str, ann: dict, on_log=None) -> bool:
     try:
-        return requests.post(API_ANNOUNCE, json={"exeToken": tok, "announcement": ann}, timeout=5).ok
-    except Exception: return False
+        r = requests.post(API_ANNOUNCE, json={"exeToken": tok, "announcement": ann}, timeout=5)
+        if on_log: on_log(f"Announce réponse ({r.status_code}): {r.text[:120]}")
+        return r.ok
+    except Exception as e:
+        if on_log: on_log(f"Announce erreur: {e}")
+        return False
 
 def link_token(one_time: str) -> str | None:
     try:
@@ -292,28 +586,44 @@ def link_token(one_time: str) -> str | None:
 
 # ── Worker ────────────────────────────────────────────────────────────────────
 def _do_self_update(download_url: str, on_log):
-    """Télécharge la nouvelle version, remplace l'exe via un script batch, redémarre."""
+    """Télécharge le ZIP de la nouvelle version, extrait à côté, relance via batch."""
+    import zipfile, tempfile
     try:
         exe_path = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve()
-        new_path = exe_path.with_suffix('.new.exe')
-        bat_path = exe_path.with_suffix('.update.bat')
+        install_dir = exe_path.parent  # dossier CourSW/
+        parent_dir  = install_dir.parent
+        zip_path    = parent_dir / "CourSW_update.zip"
+        bat_path    = parent_dir / "CourSW_update.bat"
 
         on_log("⬇️  Téléchargement de la mise à jour…")
-        with requests.get(download_url, stream=True, timeout=60) as r:
+        with requests.get(download_url, stream=True, timeout=120) as r:
             r.raise_for_status()
-            with open(new_path, 'wb') as f:
+            with open(zip_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=65536):
                     f.write(chunk)
 
-        # Script batch qui attend la fermeture de l'exe, remplace, puis relance
+        on_log("📦 Extraction…")
+        # Le ZIP contient un dossier CourSW/ à la racine
+        new_dir = parent_dir / "CourSW_new"
+        if new_dir.exists():
+            import shutil; shutil.rmtree(new_dir)
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(new_dir)
+        # Trouver le sous-dossier extrait (CourSW/ ou racine directe)
+        subdirs = [p for p in new_dir.iterdir() if p.is_dir()]
+        extracted = subdirs[0] if len(subdirs) == 1 else new_dir
+
         bat = f"""@echo off
 ping 127.0.0.1 -n 3 > nul
-move /y "{new_path}" "{exe_path}"
+rmdir /s /q "{install_dir}"
+move /y "{extracted}" "{install_dir}"
+rmdir /s /q "{new_dir}" 2>nul
+del "{zip_path}" 2>nul
 start "" "{exe_path}"
 del "%~f0"
 """
         bat_path.write_text(bat, encoding='utf-8')
-        on_log("✅ Mise à jour téléchargée — redémarrage…")
+        on_log("✅ Mise à jour prête — redémarrage…")
         time.sleep(1)
         subprocess.Popen(["cmd", "/c", str(bat_path)], creationflags=subprocess.DETACHED_PROCESS)
         os._exit(0)
@@ -329,93 +639,100 @@ class Worker(threading.Thread):
         self.on_log = on_log
         self.running = True
         self.seen: dict[str, float] = {}
-        self.last_hb = 0.0
 
     def stop(self): self.running = False
 
-    def run(self):
-        self.on_log("Démarrage de la surveillance…")
-        # Heartbeat immédiat au démarrage
+    def _heartbeat_loop(self):
+        """Thread dédié au heartbeat — indépendant de l'OCR."""
+        # Heartbeat immédiat
         try:
             hb = send_heartbeat(self.tok)
             self.on_log(f"Heartbeat initial : {hb}")
         except Exception as e:
             self.on_log(f"❌ Erreur heartbeat initial : {e}")
             hb = {}
-        self.last_hb = time.time()
+
         if hb.get("update_required"):
             self.on_status("🔄 Mise à jour requise…")
             self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
             dl = hb.get("download_url", "")
             if dl:
                 threading.Thread(target=_do_self_update, args=(dl, self.on_log), daemon=True).start()
+            self.running = False
             return
+
         if not hb.get("ok"):
-            self.on_log(f"⚠️  Heartbeat refusé — token invalide ou site inaccessible")
+            self.on_log("⚠️  Heartbeat refusé — token invalide ou site inaccessible")
         self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
-        # Ouvre le site directement sur l'onglet Cours
-        webbrowser.open(f"{SITE_URL}?section=cours")
+        webbrowser.open(SITE_URL)
 
-        self.on_log(f"Entrée boucle — running={self.running}")
         while self.running:
-          try:
-            now = time.time()
-            self.on_log(f"Tick boucle")
-
-            # Heartbeat
-            if now - self.last_hb > HEARTBEAT_INTERVAL:
+            time.sleep(HEARTBEAT_INTERVAL)
+            if not self.running:
+                break
+            try:
                 hb = send_heartbeat(self.tok)
-                self.last_hb = now
-
                 if hb.get("update_required"):
                     self.on_status("🔄 Mise à jour requise…")
                     self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
                     dl = hb.get("download_url", "")
                     if dl:
                         threading.Thread(target=_do_self_update, args=(dl, self.on_log), daemon=True).start()
+                    self.running = False
                     return
-
                 self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
+            except Exception as e:
+                self.on_log(f"⚠️  Heartbeat erreur : {e}")
 
-            # FiveM
-            win = find_fivem_window()
-            if not win:
-                self.on_log("FiveM non détecté, nouvelle tentative dans 5s…")
-                time.sleep(5)
-                continue
-            self.on_log(f"FiveM détecté : rect={win[1]}")
+    def run(self):
+        self.on_log("Démarrage de la surveillance…")
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        # Attend que le heartbeat initial soit traité
+        time.sleep(2)
 
-            _, rect = win
-            ww = rect[2] - rect[0]
-            wh = rect[3] - rect[1]
-
+        while self.running:
             try:
-                pil   = capture_region(rect)
-                text  = ocr_image(pil)
-                ann   = parse_announcement(text) if text.strip() else None
+                now = time.time()
+
+                win = find_fivem_window()
+                if not win:
+                    time.sleep(5)
+                    continue
+
+                hwnd, rect = win
+                # Ne capture que si FiveM est la fenêtre au premier plan
+                # (évite de capturer VS Code ou d'autres fenêtres derrière FiveM)
+                fg = win32gui.GetForegroundWindow()
+                if fg != hwnd:
+                    time.sleep(2)
+                    continue
+
+                pil  = capture_region(rect)
+                text = ocr_image(pil)
+                ann  = parse_announcement(text) if text.strip() else None
+                if ann:
+                    self.on_log(f"[OCR] {' '.join(text.split())[:120]}")
 
                 if ann:
                     h = ann_hash(ann)
-                    if now - self.seen.get(h, 0) > 300:
+                    seen_ago = now - self.seen.get(h, 0)
+                    if seen_ago > 300:
                         self.seen[h] = now
-                        ok = send_announcement(self.tok, ann)
+                        ok = send_announcement(self.tok, ann, self.on_log)
                         label = "cours" if ann["type"] == "cours" else "générique"
                         self.on_log(
                             f"{'✅' if ok else '⚠️'} Annonce {label} "
                             f"({ann.get('author','?')}) : {ann.get('message','')[:45]}…"
                         )
+                    else:
+                        self.on_log(f"⏳ Cooldown (seen il y a {int(seen_ago)}s) — {ann.get('author','?')}")
 
-                # Nettoyage hashes > 10 min
                 self.seen = {k: v for k, v in self.seen.items() if now - v < 600}
 
             except Exception as e:
-                self.on_log(f"Erreur : {e}")
+                self.on_log(f"❌ Erreur : {type(e).__name__}: {e}")
 
             time.sleep(CAPTURE_INTERVAL)
-
-          except Exception as e:
-            self.on_log(f"❌ Erreur boucle : {type(e).__name__}: {e}")
-            time.sleep(2)
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
 BG   = "#0d1a1e"
