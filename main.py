@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.2.3"
+VERSION        = "1.3.0"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -584,6 +584,62 @@ def link_token(one_time: str) -> str | None:
     except Exception: pass
     return None
 
+# ── Démarrage Windows ────────────────────────────────────────────────────────
+STARTUP_KEY  = r"Software\Microsoft\Windows\CurrentVersion\Run"
+STARTUP_NAME = "CourSW"
+
+def is_startup_enabled() -> bool:
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_KEY) as k:
+            winreg.QueryValueEx(k, STARTUP_NAME)
+        return True
+    except Exception:
+        return False
+
+def set_startup(enabled: bool):
+    import winreg
+    exe_path = str(Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve())
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_KEY, 0, winreg.KEY_SET_VALUE) as k:
+        if enabled:
+            winreg.SetValueEx(k, STARTUP_NAME, 0, winreg.REG_SZ, exe_path)
+        else:
+            try: winreg.DeleteValue(k, STARTUP_NAME)
+            except FileNotFoundError: pass
+
+# ── Vérification GitHub releases au démarrage ────────────────────────────────
+GITHUB_RELEASES_URL = "https://api.github.com/repos/paolito13/CoursSW/releases/latest"
+
+def check_github_update(on_log):
+    """Vérifie si une nouvelle version est disponible sur GitHub et met à jour si besoin."""
+    try:
+        on_log("🔍 Vérification des mises à jour…")
+        r = requests.get(GITHUB_RELEASES_URL, timeout=10,
+                         headers={"Accept": "application/vnd.github+json"})
+        if not r.ok:
+            on_log(f"⚠️  GitHub releases inaccessible ({r.status_code})")
+            return
+        data = r.json()
+        latest = data.get("tag_name", "").lstrip("v")
+        if not latest:
+            return
+        def _ver(s):
+            try: return tuple(int(x) for x in s.split("."))
+            except: return (0,)
+        if _ver(latest) <= _ver(VERSION):
+            on_log(f"✅ Version à jour ({VERSION})")
+            return
+        on_log(f"🆕 Nouvelle version {latest} disponible (actuelle : {VERSION})")
+        # Chercher l'asset .zip dans les assets de la release
+        assets = data.get("assets", [])
+        zip_asset = next((a for a in assets if a["name"].endswith(".zip")), None)
+        if not zip_asset:
+            on_log("⚠️  Aucun fichier ZIP trouvé dans la release")
+            return
+        _do_self_update(zip_asset["browser_download_url"], on_log)
+    except Exception as e:
+        on_log(f"⚠️  Erreur vérification GitHub : {e}")
+
 # ── Worker ────────────────────────────────────────────────────────────────────
 def _do_self_update(download_url: str, on_log):
     """Télécharge le ZIP de la nouvelle version, extrait à côté, relance via batch."""
@@ -816,6 +872,13 @@ class App(tk.Tk):
         self._build_ui()
         self._setup_tray()
 
+        # Vérification GitHub au démarrage (avant de lancer le worker)
+        threading.Thread(
+            target=check_github_update,
+            args=(lambda m: self.after(0, self._log, m),),
+            daemon=True
+        ).start()
+
         tok = load_token()
         if tok:
             self._start(tok)
@@ -859,6 +922,16 @@ class App(tk.Tk):
                   bg="#1a2e38", fg="#6b8a9a", relief="flat", font=("Segoe UI", 9), padx=10, pady=5
                   ).pack(side="right")
 
+        # Toggle démarrage automatique
+        sf = tk.Frame(self, bg=BG)
+        sf.pack(fill="x", padx=20, pady=(0, 14))
+        self._startup_var = tk.BooleanVar(value=is_startup_enabled())
+        tk.Checkbutton(sf, text="🚀  Lancer au démarrage de Windows",
+                       variable=self._startup_var, command=self._toggle_startup,
+                       bg=BG, fg="#b0c8d0", selectcolor=BG2,
+                       activebackground=BG, font=("Segoe UI", 9), bd=0
+                       ).pack(side="left")
+
     def _setup_tray(self):
         menu = pystray.Menu(
             pystray.MenuItem("📡 CourSW — Seven Wands", None, enabled=False),
@@ -898,6 +971,15 @@ class App(tk.Tk):
             on_log=lambda m: self.after(0, self._log, m),
         )
         self.worker.start()
+
+    def _toggle_startup(self):
+        try:
+            set_startup(self._startup_var.get())
+            state = "activé" if self._startup_var.get() else "désactivé"
+            self._log(f"🚀 Démarrage automatique {state}")
+        except Exception as e:
+            self._log(f"⚠️  Impossible de modifier le démarrage : {e}")
+            self._startup_var.set(is_startup_enabled())
 
     def _ask_link(self):
         self._show_window()
