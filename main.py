@@ -108,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.1"
+VERSION        = "1.5.2"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -368,12 +368,14 @@ _STOP = (
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
 )
 
-# Année : tolère les typos OCR (ann→ar, ème→eme, etc.) + chiffres romains (I→VII)
+# Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
+_ANN = r'ann[eéèêë]{1,2}e?s?'   # matche année/annee/ANNÉE/ANNEE avec re.IGNORECASE
 _YEAR_RE = (
-    r'(?:toutes?\s+(?:les\s+)?[aA][a-zà-ü]{2,6}s?'                          # toutes les années
-    r'|\d+\s*(?:[eèê]me?|[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'                 # 4e/4ème/6ème année
-    r'|[1I]\s*(?:[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'                          # 1ère / 1ere année
-    r'|(?:VII|VI|IV|VIII|V|III|II)\s*(?:[eèê]me?|[eè]re?|e)?\s+[aA][a-zà-ü]{2,6}s?'  # IV ème / V ème
+    rf'(?:toutes?\s+(?:les\s+)?{_ANN}'                                        # toutes les années
+    rf'|\d+\s*(?:[eèêé]me?|[eèé]re?|[eè])\s+{_ANN}'                         # 4ème année / 1ère année
+    rf'|[1I]\s*(?:[eèé]re?|[eè])\s+{_ANN}'                                   # 1ère / 1ere année
+    rf'|(?:VII|VI|IV|VIII|V|III|II)\s*(?:[eèêé]me?|[eèé]re?|[eè])?\s+{_ANN}' # IV ème / V ème année
+    rf'|{_ANN}\s*:?\s*\d+\s*(?:[eèêé]me?|[eèé]re?|[eè])?'                   # Année: 1er / ANNÉE 1ER
     r')'
 )
 
@@ -620,9 +622,12 @@ def parse_announcement(text: str) -> dict | None:
             year = _year_from_header
 
         # Nettoie les fuites OCR dans le message :
-        # un emoji mal lu (lettre isolée) + texte de la matière qui suit
-        # ex : "L'Essence Onirique g Alchimie - Boianiqye 11" → "L'Essence Onirique"
+        # 1. lettre isolée au milieu suivie de texte → coupe (emoji mal lu + matière qui fuit)
+        #    ex : "L'Essence Onirique g Alchimie - Boianiqye 11" → "L'Essence Onirique"
         message = re.sub(r'(?<=\w)\s+[a-zA-Z]\s+(?=[A-Za-zÀ-ü]{4}).*$', '', message).strip()
+        # 2. lettre isolée en toute fin de message → coupe
+        #    ex : "Sort (Secatrix) - Cheminée Astronomie g" → "Sort (Secatrix) - Cheminée Astronomie"
+        message = re.sub(r'\s+[a-zA-Z]$', '', message).strip()
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 4:
