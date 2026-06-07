@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.3.0"
+VERSION        = "1.4.0"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -225,15 +225,18 @@ def _detect_popup_crop(pil_img: Image.Image) -> Image.Image:
     best_right = 0
 
     # Scan de droite à gauche : cherche la colonne la plus à droite
-    # contenant des pixels "bleu foncé" typiques du popup FiveM
-    # Critère : R < 90, G < 115, B > 100, et B nettement > R
+    # contenant des pixels typiques du popup FiveM (ancien: bleu foncé / nouveau: vert-teal foncé)
     for x in range(w - 1, 10, -1):
         hits = 0
         for y in range(0, h, step):
             try:
                 px = pil_img.getpixel((x, y))
                 r, g, b = px[0], px[1], px[2]
-                if r < 90 and g < 115 and b > 100 and b > r + 30:
+                # Ancien format Seven Wands : fond bleu foncé
+                is_blue = r < 90 and g < 115 and b > 100 and b > r + 30
+                # Nouveau format Seven Wands : fond vert/teal foncé
+                is_teal = r < 90 and g > 40 and g > r + 10 and g >= b
+                if is_blue or is_teal:
                     hits += 1
             except Exception:
                 pass
@@ -453,8 +456,31 @@ def parse_announcement(text: str) -> dict | None:
         room    = ""
         subject = ""
 
-        if '§SPLIT§' in payload:
-            # Cas idéal : séparateur FiveM → split propre
+        # ── Format v2 : emojis structurés (📚 matière / 🏛 salle / ⌛ délai) ─
+        # OCR Windows peut détecter ces emojis Unicode natifs
+        m_delay_e = re.search(r'⌛\s*(.+?)(?=📚|🏛|⌛|$)', payload)
+        m_room_e  = re.search(r'🏛\s*(.+?)(?=📚|⌛|$)', payload)
+        m_subj_e  = re.search(r'📚\s*(.+?)(?=🏛|⌛|$)', payload)
+        emoji_anchors = [m for m in [m_delay_e, m_room_e, m_subj_e] if m]
+
+        if emoji_anchors:
+            # Parsing par emojis : le plus fiable quand OCR les capte
+            if m_delay_e: delay   = m_delay_e.group(1).strip()
+            if m_room_e:  room    = _normalize_room(m_room_e.group(1).strip())
+            if m_subj_e:  subject = _normalize_subject(m_subj_e.group(1).strip())
+            first_emoji_pos = min(m.start() for m in emoji_anchors)
+            title_raw = payload[:first_emoji_pos].strip(" -—(,:")
+            # "[Matière] : [Titre du cours]"
+            m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_raw, re.DOTALL)
+            if m_col:
+                if not subject:
+                    subject = _normalize_subject(m_col.group(1).strip())
+                message = m_col.group(2).strip()
+            else:
+                message = title_raw
+
+        elif '§SPLIT§' in payload:
+            # Format v1 : séparateur ─────── → §SPLIT§
             parts = payload.split('§SPLIT§', 1)
             message = parts[0].strip(" -—(,:")
             details_raw = parts[1].split('§SPLIT§')[0].strip()
@@ -468,8 +494,6 @@ def parse_announcement(text: str) -> dict | None:
                 year = last_y.group(0).strip()
                 details_raw = (details_raw[:last_y.start()] + " " + details_raw[last_y.end():]).strip()
             room, subject = _split_details(details_raw, wide=True)
-            # Si le message commence par "Sujet – Titre" (ex: "Divers – EDG 35 : …"),
-            # retire le préfixe sujet du message puisqu'il est déjà dans le tag subject
             if subject:
                 m_subj_prefix = re.match(
                     rf'^{re.escape(subject)}\s*[-–—]\s*', message, re.IGNORECASE
@@ -478,37 +502,56 @@ def parse_announcement(text: str) -> dict | None:
                     message = message[m_subj_prefix.end():].strip(" -—():,")
 
         else:
-            # Sans séparateur : DERNIÈRE occurrence du pivot strict
-            # (évite de couper sur un "Salle" écrit dans le titre de la description)
+            # Format v2 sans emojis (OCR a raté les icônes) OU format v1 sans séparateur
+            # Délai : extrait en premier (ancre la plus fiable)
+            m_d = re.search(r'[Dd]ans\s+\d+\s+\w+(?:\s*\([^)]*\))?', payload)
+            if m_d:
+                delay = m_d.group(0)
+                payload = (payload[:m_d.start()] + payload[m_d.end():]).strip()
+
+            # Salle : pivot strict sur la DERNIÈRE occurrence
             strict_hits = list(_STRICT_ROOM.finditer(payload))
             if strict_hits:
                 last_pivot = strict_hits[-1]
-                # Récupère l'article précédent si présent (ex: "La Cabane")
                 pre = payload[:last_pivot.start()].rstrip()
                 m_art = re.search(r'(?:La|Le|Les|Au[x]?|De|Du|L\')\s*$', pre, re.IGNORECASE)
                 pivot_start = m_art.start() if m_art else last_pivot.start()
-                message = payload[:pivot_start].strip(" -—(,:")
+                title_block = payload[:pivot_start].strip(" -—(,:")
                 details_raw = payload[pivot_start:]
-                m_d = re.search(r'[Dd]ans\s+\d+\s+\w+(?:\s*\([^)]*\))?', details_raw)
-                if m_d:
-                    delay = m_d.group(0)
-                    details_raw = details_raw[:m_d.start()].strip()
                 year_hits = list(re.finditer(_YEAR_RE, details_raw, re.IGNORECASE))
                 if year_hits:
                     last_y = year_hits[-1]
                     year = last_y.group(0).strip()
                     details_raw = (details_raw[:last_y.start()] + " " + details_raw[last_y.end():]).strip()
-                room, subject = _split_details(details_raw)
+                room, _ = _split_details(details_raw)
             else:
-                # Aucun pivot : tout est message, delay/year extraits de la fin
-                m_d = re.search(r'[Dd]ans\s+\d+\s+\w+(?:\s*\([^)]*\))?', payload)
-                if m_d:
-                    delay = m_d.group(0)
-                    payload = payload[:m_d.start()].strip()
+                title_block = payload
                 year_hits = list(re.finditer(_YEAR_RE, payload, re.IGNORECASE))
                 if year_hits:
                     year = year_hits[-1].group(0).strip()
-                message = payload.strip(" -—():"  ",")
+
+            # Retire l'écho de matière en fin de titre (ex: "… Cheminée toilettes) Divers")
+            for label, _ in _SUBJECTS:
+                m_echo = re.search(rf'\b{re.escape(label)}\s*$', title_block, re.IGNORECASE)
+                if m_echo:
+                    trimmed = title_block[:m_echo.start()].strip()
+                    if len(trimmed) > 5:
+                        subject = _normalize_subject(label)
+                        title_block = trimmed
+                    break
+
+            # Extrait matière depuis "[Matière] : [Titre du cours]"
+            m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
+            if m_col:
+                potential = m_col.group(1).strip()
+                norm = _normalize_subject(potential)
+                if not subject and norm != potential:
+                    subject = norm
+                    message = m_col.group(2).strip()
+                else:
+                    message = title_block
+            else:
+                message = title_block
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 8:
