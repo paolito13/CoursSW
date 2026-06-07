@@ -12,6 +12,7 @@ if exist build rmdir /s /q build
 
 echo Compilation de l'exe...
 python -m PyInstaller --onefile --windowed ^
+  --runtime-tmpdir . ^
   --name "CourSW" ^
   --hidden-import "requests" ^
   --hidden-import "mss" ^
