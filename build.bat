@@ -11,8 +11,7 @@ if exist CourSW.spec del CourSW.spec
 if exist build rmdir /s /q build
 
 echo Compilation de l'exe...
-python -m PyInstaller --onefile --windowed ^
-  --runtime-tmpdir . ^
+python -m PyInstaller --onedir --windowed ^
   --name "CourSW" ^
   --hidden-import "requests" ^
   --hidden-import "mss" ^
@@ -33,5 +32,10 @@ python -m PyInstaller --onefile --windowed ^
   main.py
 
 echo.
-echo Build termine ! L'exe se trouve dans dist\CourSW.exe
+echo Création du ZIP de distribution...
+if exist dist\CourSW.zip del dist\CourSW.zip
+powershell -Command "Compress-Archive -Path 'dist\CourSW' -DestinationPath 'dist\CourSW.zip'"
+
+echo.
+echo Build termine ! Le dossier est dans dist\CourSW\ et le ZIP dans dist\CourSW.zip
 pause
