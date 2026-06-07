@@ -108,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.4"
+VERSION        = "1.5.5"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -475,8 +475,10 @@ def parse_announcement(text: str) -> dict | None:
                     p.capitalize() if p and p.isupper() and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', p) else p
                     for p in parts
                 )
-            if w.isupper() and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', w):
-                return w.capitalize()
+            # Normalise aussi les mots entre ponctuation ex: (FLAMETTE) → (Flamette)
+            m = re.fullmatch(r'([^A-ZÀ-Üa-zà-ü]*)([A-ZÀ-Üa-zà-ü\-]{2,})([^A-ZÀ-Üa-zà-ü]*)', w)
+            if m and m.group(2).isupper():
+                return m.group(1) + m.group(2).capitalize() + m.group(3)
             return w
         payload = ' '.join(_norm_tok(w) for w in payload.split())
 
