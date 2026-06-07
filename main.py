@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.6"
+VERSION        = "1.5.7"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -644,10 +644,10 @@ def parse_announcement(text: str) -> dict | None:
 
         # Nettoie les fuites OCR dans le message :
         # Coupe dès qu'une lettre isolée apparaît (emoji mal lu) — tout ce qui suit est bruit
-        # ex : "L'Essence Onirique g Alchimie…"  → "L'Essence Onirique"
-        # ex : "…Astronomie g 11 Histoire…"       → "…Astronomie"
-        # ex : "…Cheminée Astronomie g"           → "…Cheminée Astronomie"
-        message = re.sub(r'\s+[a-zA-Z](\s+.*)?$', '', message).strip()
+        # Artefact OCR : lettre minuscule seule en début (ex: emoji → "g Alchimie")
+        message = re.sub(r'^[a-z]\s+', '', message)
+        # Lettre seule isolée en toute fin (majuscule ou minuscule)
+        message = re.sub(r'\s+[a-zA-Z]$', '', message).strip()
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 4:
