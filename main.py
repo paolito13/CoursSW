@@ -108,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.8"
+VERSION        = "1.4.9"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -748,21 +748,28 @@ def check_github_update(on_log, on_notify=None):
 
 # ── Worker ────────────────────────────────────────────────────────────────────
 def _do_self_update(download_url: str, on_log, on_notify=None):
-    """Télécharge le ZIP de la nouvelle version, extrait à côté, relance via batch."""
+    """
+    Mise à jour silencieuse et propre :
+    - Télécharge le ZIP dans le dossier de l'exe
+    - Extrait uniquement CourSW.exe → CourSW_new.exe dans le même dossier
+    - Un .bat invisible remplace l'exe et relance — aucun dossier externe créé
+    """
     import zipfile
     def _notify(title: str, msg: str):
         if on_notify:
             try: on_notify(title, msg)
             except Exception: pass
     try:
-        exe_path = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve()
+        exe_path    = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve()
         install_dir = exe_path.parent
-        parent_dir  = install_dir.parent
-        zip_path    = parent_dir / "CourSW_update.zip"
-        bat_path    = parent_dir / "CourSW_update.bat"
+        zip_path    = install_dir / "CourSW_update.zip"
+        new_exe     = install_dir / "CourSW_new.exe"
+        old_exe     = install_dir / "CourSW_old.exe"
+        bat_path    = install_dir / "update.bat"
 
         on_log("⬇️  Téléchargement de la mise à jour…")
-        _notify("🔄 Mise à jour CourSW", "Téléchargement de la nouvelle version…")
+        _notify("🔄 Mise à jour CourSW", "Téléchargement en cours…")
+
         with requests.get(download_url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(zip_path, 'wb') as f:
@@ -770,32 +777,44 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
                     f.write(chunk)
 
         on_log("📦 Extraction…")
-        new_dir = parent_dir / "CourSW_new"
-        if new_dir.exists():
-            import shutil; shutil.rmtree(new_dir)
         with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(new_dir)
-        subdirs = [p for p in new_dir.iterdir() if p.is_dir()]
-        extracted = subdirs[0] if len(subdirs) == 1 else new_dir
+            # Cherche CourSW.exe n'importe où dans le ZIP
+            candidates = [n for n in z.namelist() if n.lower().endswith('coursw.exe')]
+            if not candidates:
+                raise RuntimeError("CourSW.exe introuvable dans le ZIP")
+            with z.open(candidates[0]) as src, open(new_exe, 'wb') as dst:
+                dst.write(src.read())
 
-        bat = f"""@echo off
-ping 127.0.0.1 -n 3 > nul
-rmdir /s /q "{install_dir}"
-move /y "{extracted}" "{install_dir}"
-rmdir /s /q "{new_dir}" 2>nul
-del "{zip_path}" 2>nul
-start "" "{exe_path}"
-del "%~f0"
-"""
+        zip_path.unlink(missing_ok=True)
+
+        # .bat : attend que l'exe soit fermé, permute les fichiers, relance
+        bat = (
+            '@echo off\n'
+            'ping 127.0.0.1 -n 4 > nul\n'
+            f'if exist "{old_exe}" del /f /q "{old_exe}"\n'
+            f'rename "{exe_path}" "CourSW_old.exe"\n'
+            f'rename "{new_exe}" "CourSW.exe"\n'
+            f'if exist "{old_exe}" del /f /q "{old_exe}"\n'
+            f'start "" "{exe_path}"\n'
+            'del "%~f0"\n'
+        )
         bat_path.write_text(bat, encoding='utf-8')
-        on_log("✅ Mise à jour prête — redémarrage…")
-        _notify("✅ Mise à jour prête", "CourSW redémarre automatiquement.")
+
+        on_log("✅ Mise à jour prête — redémarrage dans 2s…")
+        _notify("✅ CourSW mis à jour", "Redémarrage automatique…")
         time.sleep(2)
-        subprocess.Popen(["cmd", "/c", str(bat_path)], creationflags=subprocess.DETACHED_PROCESS)
+        subprocess.Popen(
+            ["cmd", "/c", str(bat_path)],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+        )
         os._exit(0)
     except Exception as e:
         on_log(f"⚠️  Mise à jour échouée : {e}")
         _notify("⚠️ Mise à jour échouée", str(e)[:80])
+        # Nettoyage en cas d'erreur
+        for p in [zip_path, new_exe, bat_path]:
+            try: p.unlink()
+            except Exception: pass
 
 
 class Worker(threading.Thread):
