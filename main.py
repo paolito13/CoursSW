@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.18"
+VERSION        = "1.5.19"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -687,6 +687,8 @@ def parse_announcement(text: str) -> dict | None:
         # Nettoie les fuites OCR dans le message :
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)
+        # Résidu "initiale + Nom propre" en début (ex: "R Greenshadow Club…" → "Club…")
+        message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
         message = re.sub(r'^[a-z]\s+', '', message)          # en début : "g Alchimie" → "Alchimie"
         message = re.sub(r'\s+[a-z](?=\s)', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
