@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.4"
+VERSION        = "1.4.5"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -783,11 +783,12 @@ del "%~f0"
 
 
 class Worker(threading.Thread):
-    def __init__(self, exe_token: str, on_status, on_log):
+    def __init__(self, exe_token: str, on_status, on_log, on_notify=None):
         super().__init__(daemon=True)
         self.tok = exe_token
         self.on_status = on_status
         self.on_log = on_log
+        self.on_notify = on_notify
         self.running = True
         self.seen: dict[str, float] = {}
 
@@ -808,7 +809,7 @@ class Worker(threading.Thread):
             self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
             dl = hb.get("download_url", "")
             if dl:
-                threading.Thread(target=_do_self_update, args=(dl, self.on_log, self._notify), daemon=True).start()
+                threading.Thread(target=_do_self_update, args=(dl, self.on_log, self.on_notify), daemon=True).start()
             self.running = False
             return
 
@@ -828,7 +829,7 @@ class Worker(threading.Thread):
                     self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
                     dl = hb.get("download_url", "")
                     if dl:
-                        threading.Thread(target=_do_self_update, args=(dl, self.on_log, self._notify), daemon=True).start()
+                        threading.Thread(target=_do_self_update, args=(dl, self.on_log, self.on_notify), daemon=True).start()
                     self.running = False
                     return
                 self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
@@ -1070,6 +1071,7 @@ class App(tk.Tk):
             tok,
             on_status=lambda m: self.after(0, self._set_status, m),
             on_log=lambda m: self.after(0, self._log, m),
+            on_notify=self._notify,
         )
         self.worker.start()
 
