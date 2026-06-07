@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.8"
+VERSION        = "1.5.15"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -368,7 +368,7 @@ _STOP = (
     r'[Cc]ours|[Tt]outes?|[Tt]ous|[Ll]es?|[Dd]ans|[Aa]ux?|[Dd]es?'
     r'|[Uu]ne?|[Ee]n|[Ss]a[lr][le]|[Ss]erre|[Pp]our|[Aa]vec|[Dd]e\b'
     # Matières / mots-clés FiveM fréquents après le nom
-    r'|[Ss]orts?|[Pp]otions?|[Dd]ivers|[Hh][Dd][Mm]|[Aa]lchimie'
+    r'|[Ss]orts?|[Pp]otions?|[Dd]ivers|[Cc]lubs?|[Hh][Dd][Mm]|[Aa]lchimie'
     r'|[Bb]otanique|[Aa]stronomie|[Tt]ransfiguration|[Mm][ée]tamorphose'
     r'|[Dd][ée]fense|[Dd]ivination|[Aa]rithmancie|[Ss]oins'
     r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature'
@@ -381,6 +381,7 @@ _YEAR_RE = (
     rf'(?:toutes?\s+(?:les\s+)?{_ANN}'                                        # toutes les années
     rf'|\d+\s*(?:[eèêé]me?|[eèé]re?|[eè])\s+{_ANN}'                         # 4ème année / 1ère année
     rf'|[1I]\s*(?:[eèé]re?|[eè])\s+{_ANN}'                                   # 1ère / 1ere année
+    rf'|(?:[eèé]re?)\s+{_ANN}'                                                # "ère année" seul (I perdu en OCR → 1ère implicite)
     rf'|(?:X|IX|VIII|VII|VI|V|IV|III|II)\s*(?:[eèêé]me?|[eèé]re?|[eè])?\s+{_ANN}' # X ème / V ème / IV ème année (X = OCR lit V comme X)
     rf'|{_ANN}\s*:?\s*\d+\s*(?:[eèêé]me?|[eèé]re?|[eè])?'                   # Année: 1er / ANNÉE 1ER
     r')'
@@ -454,6 +455,8 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'(?<=[A-Za-zÀ-ü0-9])\s+I\s+(?=[A-ZÀ-Üa-zà-ü0-9])', ' / ', joined)
     # OCR fusionne "/ 3" en "13" (I+digit sans espace) → on restaure l'ordinal
     joined = re.sub(r'\b1(\d\s*(?:[eèê]me?|[eè]re?|e)\b)', r'\1', joined)
+    # OCR lit "II" (2ème année) comme "11" — corrige avant extraction d'année
+    joined = re.sub(r'\b11\s*(?=[eèêéE]me?\b)', '2 ', joined, flags=re.IGNORECASE)
 
     is_cours   = bool(re.search(r'ANNONCE\s+DE\s+COURS', joined, re.IGNORECASE))
     is_general = bool(re.search(r'ANNONCE\s+(?!DE\s+COURS)[A-ZÀ-Ü]', joined))
@@ -465,6 +468,9 @@ def parse_announcement(text: str) -> dict | None:
     # "ANNONCE DE COURS" (colonne gauche du popup) et serait perdue sinon
     _year_hits_full = list(re.finditer(_YEAR_RE, joined, re.IGNORECASE))
     _year_from_header = _year_hits_full[0].group(0).strip() if _year_hits_full else ""
+    # "ère Année" sans numéro (I perdu OCR) → "1ère Année"
+    if _year_from_header and re.match(r'^[eèé]re?\s', _year_from_header, re.IGNORECASE):
+        _year_from_header = '1' + _year_from_header
 
     # ══════════════════════════════════════════════════════════════════════════
     if is_cours:
@@ -493,7 +499,9 @@ def parse_announcement(text: str) -> dict | None:
         # Token nom : mot commençant par majuscule (Dupont) OU initiale seule (L / L.)
         # S'arrête aux abbréviations tout-caps (HDM, HMD…) et aux mots _STOP
         _NAME_TOK = r'(?:[A-ZÀ-Ü][A-ZÀ-Üa-zà-ü\'\-]+|[A-ZÀ-Ü]\.?(?=\s|$))'
-        _NAME_STOP = rf'(?:{_STOP}|[A-ZÀ-Ü]{{2,}}(?![a-zà-ü]))'
+        # Contractions tout-caps (C'EST, D'UNE…) → jamais un nom propre
+        _ALL_CAPS_CONTRACTION = r"[A-ZÀ-Ü]'[A-ZÀ-Ü]{2,}"
+        _NAME_STOP = rf'(?:{_STOP}|[A-ZÀ-Ü]{{2,}}(?![a-zà-ü])|{_ALL_CAPS_CONTRACTION})'
         author = ""
         m_a = re.search(
             rf'(?i:par)\.?\s+(?:(?:Pr|Dr|Mme|Mlle|M)\.?\s+)?'
@@ -503,8 +511,8 @@ def parse_announcement(text: str) -> dict | None:
         )
         if m_a:
             author = m_a.group(1).strip()
-            # Sécurité : retire les mots _STOP qui auraient glissé en fin de nom
-            author = re.sub(rf'\s+(?:{_STOP})$', '', author).strip()
+            # Sécurité : retire les mots _STOP ou contractions tout-caps en fin de nom
+            author = re.sub(rf'\s+(?:{_STOP}|{_ALL_CAPS_CONTRACTION})$', '', author).strip()
             payload = payload[m_a.end():].strip()
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
@@ -651,12 +659,30 @@ def parse_announcement(text: str) -> dict | None:
             else:
                 message = title_block
 
+            # "[Matière] - [Titre du cours]" (format tiret — ex: "Divers - Les Mangas Golmu")
+            # Si le sujet est déjà connu et que le message commence par "Sujet - ", retire ce préfixe
+            if subject:
+                m_dash = re.match(
+                    r'^' + re.escape(subject) + r'\s*[-–]\s*(.+)$',
+                    message, re.IGNORECASE | re.DOTALL
+                )
+                if m_dash:
+                    message = m_dash.group(1).strip()
+                else:
+                    # Essai via _normalize_subject sur la partie avant " - "
+                    m_dash2 = re.match(r'^([^–\-]{1,40})\s*[-–]\s*(.+)$', message, re.DOTALL)
+                    if m_dash2:
+                        norm2 = _normalize_subject(m_dash2.group(1).strip())
+                        if norm2 and norm2.lower() == subject.lower():
+                            message = m_dash2.group(2).strip()
+
         # Fallback : année extraite de l'en-tête (avant "ANNONCE DE COURS")
         if not year and _year_from_header:
             year = _year_from_header
 
         # Nettoie les fuites OCR dans le message :
-        # Coupe dès qu'une lettre isolée apparaît (emoji mal lu) — tout ce qui suit est bruit
+        # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
+        message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
         message = re.sub(r'^[a-z]\s+', '', message)          # en début : "g Alchimie" → "Alchimie"
         message = re.sub(r'\s+[a-z](?=\s)', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
@@ -664,6 +690,9 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\s+[A-Z]$', '', message)          # en fin majuscule isolée
         # Retire les résidus d'année qui ont fui dans le message (ex: "X Eme Année" / "5ème Année")
         message = re.sub(_YEAR_RE, '', message, flags=re.IGNORECASE).strip(' -—,')
+        # Retire les suffixes ordinaux orphelins en fin de message (ex: "Cours 2 Eme" → "Cours 2")
+        # "2 Eme" vient de "2ème année" dont "année" était dans la section icône et non dans le titre
+        message = re.sub(r'(?:\s+\d+)?\s+[eèêé]m[eé]?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
         message = re.sub(r'\s{2,}', ' ', message).strip()
 
         # Rejette faux positifs OCR
@@ -695,7 +724,17 @@ def parse_announcement(text: str) -> dict | None:
         author = m_a.group(1).strip() if m_a else ""
 
         # Message : tout ce qui suit "ANNONCE DE"
-        message = joined[m.end():].strip(" -—,[]")
+        raw_after = joined[m.end():].strip()
+
+        # Format alternatif : "ANNONCE DE [PRÉNOM NOM] [MESSAGE]"
+        # Tous les persos ont exactement prénom + nom → on prend toujours 2 tokens capitalisés
+        if not author:
+            m_a2 = re.match(rf'^({_GEN_TOK}\s+{_GEN_TOK})\s+', raw_after)
+            if m_a2:
+                author = m_a2.group(1).strip()
+                raw_after = raw_after[m_a2.end():].strip()
+
+        message = raw_after.strip(" -—,[]")
 
         if not message:
             return None
@@ -867,9 +906,13 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
         on_log("✅ Mise à jour prête — redémarrage dans 2s…")
         _notify("✅ CourSW mis à jour", "Redémarrage automatique…")
         time.sleep(2)
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0  # SW_HIDE
         subprocess.Popen(
             ["cmd", "/c", str(bat_path)],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+            startupinfo=si,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         os._exit(0)
     except Exception as e:
