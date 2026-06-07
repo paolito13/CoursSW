@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.20"
+VERSION        = "1.5.21"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1021,8 +1021,6 @@ class Worker(threading.Thread):
 
                 if ann:
                     self.on_log(f"[OCR✅] {' '.join(text.split())[:120]}")
-                elif text.strip():
-                    self.on_log(f"[OCR❌] {' '.join(text.split())[:120]}")
 
                 if ann:
                     h = ann_hash(ann)
