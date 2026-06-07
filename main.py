@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.1"
+VERSION        = "1.4.2"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -269,67 +269,89 @@ def capture_region(rect):
 
 # ── Parsing OCR → annonce structurée ─────────────────────────────────────────
 
+import unicodedata as _ud
+
+def _deaccent(s: str) -> str:
+    return ''.join(c for c in _ud.normalize('NFD', s.lower()) if _ud.category(c) != 'Mn')
+
+def _trigrams(s: str) -> set:
+    s = ' ' + s + ' '
+    return {s[i:i+3] for i in range(len(s) - 2)}
+
+def _trigram_sim(a: str, b: str) -> float:
+    ta, tb = _trigrams(a), _trigrams(b)
+    if not ta and not tb: return 1.0
+    if not ta or not tb:  return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
+    """
+    Retourne TOUJOURS l'une des valeurs canoniques de la table.
+    Étape 1 : correspondance par mots-clés.
+    Étape 2 : similarité trigrammes sur le label normalisé.
+    Jamais de retour du texte OCR brut.
+    """
+    key = _deaccent(raw.strip())
+    # Étape 1 — mots-clés
+    best_label, best_score = table[0][0], 0
+    for label, keywords in table:
+        score = sum(1 for kw in keywords if kw in key)
+        if score > best_score:
+            best_label, best_score = label, score
+    if best_score > 0:
+        return best_label
+    # Étape 2 — trigrammes sur le label canonique normalisé
+    best_label, best_sim = table[0][0], -1.0
+    for label, _ in table:
+        sim = _trigram_sim(key, _deaccent(label))
+        if sim > best_sim:
+            best_label, best_sim = label, sim
+    return best_label
+
+
 # Salles officielles + leurs variantes OCR / abréviations
 _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
     ('Salle CMS',                  ['cms']),
-    ('Salle Créatures Magiques',   ['creature', 'créature', 'creatur', 'magique', 'magiques']),
+    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature']),
     ('Serre 1',                    ['serre 1', 'serre1']),
     ('Serre 2',                    ['serre 2', 'serre2']),
     ('Serre 3',                    ['serre 3', 'serre3']),
     ('Serre 4',                    ['serre 4', 'serre4']),
     ('Salle DCFM (toilettes)',     ['dcfm', 'toilette']),
     ('Salle Musique',              ['musique']),
-    ('Salle Généraliste',          ['generaliste', 'généraliste', 'general']),
-    ('Salle Potions',              ['potion', 'potions']),
+    ('Salle Généraliste',          ['generaliste', 'general', 'generalist']),
+    ('Salle Potions',              ['salle potion', 'salle potions']),
     ('Salle de Duel',              ['duel']),
-    ('Salle de Littérature',       ['litter', 'littér', 'littera']),
-    ("Salle d'Etude de golmue",    ['etude', 'étude', 'golmue', 'golmu', 'study']),
+    ('Salle de Littérature',       ['litter', 'littera', 'litterature']),
+    ("Salle d'Etude de golmue",    ['golmue', 'golmu', 'etude de golm', 'study']),
 ]
 
 def _normalize_room(raw: str) -> str:
-    """Mappe n'importe quelle variante OCR vers la salle canonique."""
     if not raw:
         return raw
-    import unicodedata as _ud, re as _re
-    key = _ud.normalize('NFD', raw.lower().strip())
-    key = ''.join(c for c in key if _ud.category(c) != 'Mn')  # retire accents
-    # Serre avec numéro : détection directe
-    m = _re.search(r'serre\s*(\d)', key)
+    # Serre avec numéro : détection directe prioritaire
+    m = re.search(r'serre\s*(\d)', _deaccent(raw))
     if m:
         return f'Serre {m.group(1)}'
-    best_label, best_score = raw, 0
-    for label, keywords in _ROOMS:
-        score = sum(1 for kw in keywords if kw in key)
-        if score > best_score:
-            best_label, best_score = label, score
-    return best_label if best_score > 0 else raw
+    return _best_canonical(raw, _ROOMS)
 
 
 # Matières officielles + leurs variantes OCR / abréviations
 _SUBJECTS: list[tuple[str, list[str]]] = [
-    ('Alchimie - Botanique', ['alchimie', 'botanique']),
-    ('Sorts',                ['sort', 'sorts']),
+    ('Alchimie - Botanique', ['alchimie', 'botanique', 'alch']),
+    ('Sorts',                ['sort', 'sorts', 'magie']),
     ('Potions',              ['potion', 'potions']),
-    ('Histoire de la Magie', ['histoire', 'histoires', 'hdm', 'hmd']),
-    ('Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'triton', 'animaux']),
+    ('Histoire de la Magie', ['histoire', 'hdm', 'hmd', 'hist']),
+    ('Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'triton', 'animaux', 'bestiaire']),
     ('Club',                 ['club']),
-    ('Divers',               ['divers']),
+    ('Divers',               ['divers', 'hygiene', 'hygiène', 'initiation']),
 ]
 
 def _normalize_subject(raw: str) -> str:
-    """Mappe n'importe quelle variante OCR vers la matière canonique."""
     if not raw:
         return raw
-    import unicodedata as _ud2
-    key = _ud2.normalize('NFD', raw.lower().strip())
-    key = ''.join(c for c in key if _ud2.category(c) != 'Mn')
-    best_label, best_score = raw, 0
-    for label, keywords in _SUBJECTS:
-        score = sum(1 for kw in keywords if kw in key)
-        if score > best_score:
-            best_label, best_score = label, score
-    return best_label if best_score > 0 else raw
+    return _best_canonical(raw, _SUBJECTS)
 
 
 # Mots qui signalent la fin du nom d'auteur
