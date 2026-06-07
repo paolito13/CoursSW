@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.6"
+VERSION        = "1.4.7"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -454,14 +454,20 @@ def parse_announcement(text: str) -> dict | None:
         m = re.search(r'ANNONCE\s+DE\s+COURS\s*(.*)', joined, re.IGNORECASE)
         payload = m.group(1).strip() if m else joined
 
+        # Normalise les tokens ALL CAPS en Title Case (OCR parfois tout en majuscules)
+        payload = ' '.join(
+            w.capitalize() if w.isupper() and len(w) > 1 and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', w) else w
+            for w in payload.split()
+        )
+
         # ── Auteur ────────────────────────────────────────────────────────────
         # Token nom : mot commençant par majuscule (Dupont) OU initiale seule (L / L.)
         # S'arrête aux abbréviations tout-caps (HDM, HMD…) et aux mots _STOP
-        _NAME_TOK = r'(?:[A-ZÀ-Ü][a-zà-ü\'\-]+|[A-ZÀ-Ü]\.?(?=\s|$))'
+        _NAME_TOK = r'(?:[A-ZÀ-Ü][A-ZÀ-Üa-zà-ü\'\-]+|[A-ZÀ-Ü]\.?(?=\s|$))'
         _NAME_STOP = rf'(?:{_STOP}|[A-ZÀ-Ü]{{2,}}(?![a-zà-ü]))'
         author = ""
         m_a = re.search(
-            rf'[Pp][ao]?r\.?\s+(?:(?:Pr|Dr|Mme|Mlle|M)\.?\s+)?'
+            rf'(?i:par)\.?\s+(?:(?:Pr|Dr|Mme|Mlle|M)\.?\s+)?'
             rf'({_NAME_TOK}'
             rf'(?:\s+(?!(?:{_NAME_STOP})\b){_NAME_TOK}){{0,2}})',
             payload
