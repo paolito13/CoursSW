@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.21"
+VERSION        = "1.5.22"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -879,18 +879,32 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
                 for chunk in r.iter_content(chunk_size=65536):
                     f.write(chunk)
 
+        # Vérifie que le fichier téléchargé est valide (> 1 Mo)
+        if new_exe.stat().st_size < 1_000_000:
+            raise ValueError(f"Fichier téléchargé trop petit ({new_exe.stat().st_size} octets) — probablement bloqué par l'antivirus")
+
         bat = (
             '@echo off\n'
-            'timeout /t 4 /nobreak > nul\n'
-            f'move /y "{new_exe}" "{exe_path}"\n'
-            f'start "" "{exe_path}"\n'
+            'timeout /t 6 /nobreak > nul\n'
+            # Retry jusqu'à 5 fois si le move échoue (fichier encore verrouillé)
+            'set TRIES=0\n'
+            ':retry\n'
+            f'move /y "{new_exe}" "{exe_path}" > nul 2>&1\n'
+            'if errorlevel 1 (\n'
+            '  set /a TRIES+=1\n'
+            '  if %TRIES% lss 5 (\n'
+            '    timeout /t 2 /nobreak > nul\n'
+            '    goto retry\n'
+            '  )\n'
+            ')\n'
+            f'if exist "{exe_path}" start "" "{exe_path}"\n'
             'del "%~f0"\n'
         )
         bat_path.write_text(bat, encoding='utf-8')
 
-        on_log("✅ Mise à jour prête — redémarrage dans 2s…")
+        on_log("✅ Mise à jour prête — redémarrage dans 3s…")
         _notify("✅ CourSW mis à jour", "Redémarrage automatique…")
-        time.sleep(2)
+        time.sleep(3)
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 0  # SW_HIDE
