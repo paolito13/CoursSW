@@ -82,6 +82,8 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 
+import io
+import base64
 import requests
 import mss
 from PIL import Image, ImageDraw
@@ -106,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.7"
+VERSION        = "1.4.8"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -665,9 +667,17 @@ def send_heartbeat(tok: str) -> dict:
         return r.json() if r.ok or r.status_code == 200 else {}
     except Exception: return {}
 
-def send_announcement(tok: str, ann: dict, on_log=None) -> bool:
+def _pil_to_b64(pil_img: Image.Image) -> str:
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode()
+
+def send_announcement(tok: str, ann: dict, screenshot_b64: str | None = None, on_log=None) -> bool:
     try:
-        r = requests.post(API_ANNOUNCE, json={"exeToken": tok, "announcement": ann}, timeout=5)
+        payload: dict = {"exeToken": tok, "announcement": ann}
+        if screenshot_b64:
+            payload["screenshot"] = screenshot_b64
+        r = requests.post(API_ANNOUNCE, json=payload, timeout=30)
         if on_log: on_log(f"Announce réponse ({r.status_code}): {r.text[:120]}")
         return r.ok
     except Exception as e:
@@ -865,9 +875,36 @@ class Worker(threading.Thread):
                     time.sleep(2)
                     continue
 
-                pil  = capture_region(rect)
-                text = ocr_image(pil)
-                ann  = parse_announcement(text) if text.strip() else None
+                # Multi-capture : 3 screens espacés de 0.5s → garde le meilleur OCR
+                captures: list[tuple[Image.Image, str, dict | None]] = []
+                for i in range(3):
+                    if i > 0:
+                        time.sleep(0.5)
+                    try:
+                        pil_i = capture_region(rect)
+                        txt_i = ocr_image(pil_i)
+                        ann_i = parse_announcement(txt_i) if txt_i.strip() else None
+                        captures.append((pil_i, txt_i, ann_i))
+                    except Exception as ce:
+                        self.on_log(f"❌ Capture {i+1}: {type(ce).__name__}: {ce}")
+
+                if not captures:
+                    time.sleep(CAPTURE_INTERVAL)
+                    continue
+
+                def _cap_score(c: tuple) -> int:
+                    _, _, a = c
+                    if a is None: return -1
+                    s = 0
+                    if a.get('subject'): s += 10
+                    if a.get('room'):    s += 10
+                    if a.get('year'):    s += 10
+                    if a.get('delay'):   s += 10
+                    s += min(len(a.get('message', '')), 80)
+                    return s
+
+                best_pil, text, ann = max(captures, key=_cap_score)
+
                 if ann:
                     self.on_log(f"[OCR✅] {' '.join(text.split())[:120]}")
                 elif text.strip():
@@ -878,7 +915,11 @@ class Worker(threading.Thread):
                     seen_ago = now - self.seen.get(h, 0)
                     if seen_ago > 300:
                         self.seen[h] = now
-                        ok = send_announcement(self.tok, ann, self.on_log)
+                        try:
+                            scr_b64 = _pil_to_b64(best_pil)
+                        except Exception:
+                            scr_b64 = None
+                        ok = send_announcement(self.tok, ann, screenshot_b64=scr_b64, on_log=self.on_log)
                         label = "cours" if ann["type"] == "cours" else "générique"
                         self.on_log(
                             f"{'✅' if ok else '⚠️'} Annonce {label} "
