@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.2"
+VERSION        = "1.4.3"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -701,7 +701,7 @@ def set_startup(enabled: bool):
 # ── Vérification GitHub releases au démarrage ────────────────────────────────
 GITHUB_RELEASES_URL = "https://api.github.com/repos/paolito13/CoursSW/releases/latest"
 
-def check_github_update(on_log):
+def check_github_update(on_log, on_notify=None):
     """Vérifie si une nouvelle version est disponible sur GitHub et met à jour si besoin."""
     try:
         on_log("🔍 Vérification des mises à jour…")
@@ -721,28 +721,32 @@ def check_github_update(on_log):
             on_log(f"✅ Version à jour ({VERSION})")
             return
         on_log(f"🆕 Nouvelle version {latest} disponible (actuelle : {VERSION})")
-        # Chercher l'asset .zip dans les assets de la release
         assets = data.get("assets", [])
         zip_asset = next((a for a in assets if a["name"].endswith(".zip")), None)
         if not zip_asset:
             on_log("⚠️  Aucun fichier ZIP trouvé dans la release")
             return
-        _do_self_update(zip_asset["browser_download_url"], on_log)
+        _do_self_update(zip_asset["browser_download_url"], on_log, on_notify)
     except Exception as e:
         on_log(f"⚠️  Erreur vérification GitHub : {e}")
 
 # ── Worker ────────────────────────────────────────────────────────────────────
-def _do_self_update(download_url: str, on_log):
+def _do_self_update(download_url: str, on_log, on_notify=None):
     """Télécharge le ZIP de la nouvelle version, extrait à côté, relance via batch."""
-    import zipfile, tempfile
+    import zipfile
+    def _notify(title: str, msg: str):
+        if on_notify:
+            try: on_notify(title, msg)
+            except Exception: pass
     try:
         exe_path = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve()
-        install_dir = exe_path.parent  # dossier CourSW/
+        install_dir = exe_path.parent
         parent_dir  = install_dir.parent
         zip_path    = parent_dir / "CourSW_update.zip"
         bat_path    = parent_dir / "CourSW_update.bat"
 
         on_log("⬇️  Téléchargement de la mise à jour…")
+        _notify("🔄 Mise à jour CourSW", "Téléchargement de la nouvelle version…")
         with requests.get(download_url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(zip_path, 'wb') as f:
@@ -750,13 +754,11 @@ def _do_self_update(download_url: str, on_log):
                     f.write(chunk)
 
         on_log("📦 Extraction…")
-        # Le ZIP contient un dossier CourSW/ à la racine
         new_dir = parent_dir / "CourSW_new"
         if new_dir.exists():
             import shutil; shutil.rmtree(new_dir)
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(new_dir)
-        # Trouver le sous-dossier extrait (CourSW/ ou racine directe)
         subdirs = [p for p in new_dir.iterdir() if p.is_dir()]
         extracted = subdirs[0] if len(subdirs) == 1 else new_dir
 
@@ -771,11 +773,13 @@ del "%~f0"
 """
         bat_path.write_text(bat, encoding='utf-8')
         on_log("✅ Mise à jour prête — redémarrage…")
-        time.sleep(1)
+        _notify("✅ Mise à jour prête", "CourSW redémarre automatiquement.")
+        time.sleep(2)
         subprocess.Popen(["cmd", "/c", str(bat_path)], creationflags=subprocess.DETACHED_PROCESS)
         os._exit(0)
     except Exception as e:
         on_log(f"⚠️  Mise à jour échouée : {e}")
+        _notify("⚠️ Mise à jour échouée", str(e)[:80])
 
 
 class Worker(threading.Thread):
@@ -804,7 +808,7 @@ class Worker(threading.Thread):
             self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
             dl = hb.get("download_url", "")
             if dl:
-                threading.Thread(target=_do_self_update, args=(dl, self.on_log), daemon=True).start()
+                threading.Thread(target=_do_self_update, args=(dl, self.on_log, self._notify), daemon=True).start()
             self.running = False
             return
 
@@ -824,7 +828,7 @@ class Worker(threading.Thread):
                     self.on_log("⚠️  Nouvelle version requise — mise à jour automatique…")
                     dl = hb.get("download_url", "")
                     if dl:
-                        threading.Thread(target=_do_self_update, args=(dl, self.on_log), daemon=True).start()
+                        threading.Thread(target=_do_self_update, args=(dl, self.on_log, self._notify), daemon=True).start()
                     self.running = False
                     return
                 self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
@@ -966,7 +970,7 @@ class App(tk.Tk):
         # Vérification GitHub au démarrage (avant de lancer le worker)
         threading.Thread(
             target=check_github_update,
-            args=(lambda m: self.after(0, self._log, m),),
+            args=(lambda m: self.after(0, self._log, m), self._notify),
             daemon=True
         ).start()
 
@@ -1035,6 +1039,10 @@ class App(tk.Tk):
         )
         self.tray = pystray.Icon("CourSW", _make_tray_icon(), "CourSW — Seven Wands", menu)
         threading.Thread(target=self.tray.run, daemon=True).start()
+
+    def _notify(self, title: str, msg: str):
+        try: self.tray.notify(msg, title)
+        except Exception: pass
 
     def _show_window(self, *_):
         self.after(0, self.deiconify)
