@@ -9,6 +9,13 @@ import os
 import subprocess
 import importlib
 
+# PyInstaller : certifi doit être localisé avant tout import réseau
+if getattr(sys, 'frozen', False):
+    _cert = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
+    if os.path.isfile(_cert):
+        os.environ['SSL_CERT_FILE']      = _cert
+        os.environ['REQUESTS_CA_BUNDLE'] = _cert
+
 # ── Auto-installer (lancé AVANT tout import externe) ─────────────────────────
 REQUIRED = {
     "requests":   "requests",
@@ -108,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.5"
+VERSION        = "1.5.6"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
