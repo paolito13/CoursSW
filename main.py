@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.0"
+VERSION        = "1.4.1"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -232,11 +232,12 @@ def _detect_popup_crop(pil_img: Image.Image) -> Image.Image:
             try:
                 px = pil_img.getpixel((x, y))
                 r, g, b = px[0], px[1], px[2]
-                # Ancien format Seven Wands : fond bleu foncé
-                is_blue = r < 90 and g < 115 and b > 100 and b > r + 30
-                # Nouveau format Seven Wands : fond vert/teal foncé
-                is_teal = r < 90 and g > 40 and g > r + 10 and g >= b
-                if is_blue or is_teal:
+                # Détection générique : tout pixel coloré (non noir, non blanc)
+                # Couvre toutes les couleurs d'année : vert (1re), violet (4e), bleu, rouge…
+                max_c = max(r, g, b)
+                min_c = min(r, g, b)
+                is_popup = (max_c - min_c) > 25 and 35 < max_c < 220
+                if is_popup:
                     hits += 1
             except Exception:
                 pass
@@ -311,7 +312,7 @@ _SUBJECTS: list[tuple[str, list[str]]] = [
     ('Sorts',                ['sort', 'sorts']),
     ('Potions',              ['potion', 'potions']),
     ('Histoire de la Magie', ['histoire', 'histoires', 'hdm', 'hmd']),
-    ('Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques']),
+    ('Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'triton', 'animaux']),
     ('Club',                 ['club']),
     ('Divers',               ['divers']),
 ]
@@ -470,7 +471,19 @@ def parse_announcement(text: str) -> dict | None:
             if m_subj_e:  subject = _normalize_subject(m_subj_e.group(1).strip())
             first_emoji_pos = min(m.start() for m in emoji_anchors)
             title_raw = payload[:first_emoji_pos].strip(" -—(,:")
-            # "[Matière] : [Titre du cours]"
+            # Extrait "- Année: X" inline dans le titre
+            m_annee = re.search(r'\s*[-–]\s*[Aa]nn[ée]e?\s*:\s*([^\-–]+?)(?=\s*[-–]|$)', title_raw)
+            if m_annee:
+                if not year: year = m_annee.group(1).strip()
+                title_raw = (title_raw[:m_annee.start()] + title_raw[m_annee.end():]).strip(" -—")
+            # Extrait "- Salle: X" inline dans le titre (backup si 🏛 raté)
+            m_salle_inl = re.search(r'\s*[-–]\s*[Ss]alle\s*:\s*(.+?)(?=\s*[-–]|$)', title_raw)
+            if m_salle_inl:
+                if not room: room = _normalize_room(m_salle_inl.group(1).strip())
+                title_raw = (title_raw[:m_salle_inl.start()] + title_raw[m_salle_inl.end():]).strip(" -—")
+            # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
+            title_raw = re.sub(r'^[Cc]ours\s+', '', title_raw).strip()
+            # "[Matière] : [Titre du cours]" (1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_raw, re.DOTALL)
             if m_col:
                 if not subject:
@@ -530,6 +543,16 @@ def parse_announcement(text: str) -> dict | None:
                 if year_hits:
                     year = year_hits[-1].group(0).strip()
 
+            # Extrait "- Année: X" et "- Salle: X" inline dans le titre
+            m_annee = re.search(r'\s*[-–]\s*[Aa]nn[ée]e?\s*:\s*([^\-–]+?)(?=\s*[-–]|$)', title_block)
+            if m_annee:
+                if not year: year = m_annee.group(1).strip()
+                title_block = (title_block[:m_annee.start()] + title_block[m_annee.end():]).strip(" -—")
+            m_salle_inl = re.search(r'\s*[-–]\s*[Ss]alle\s*:\s*(.+?)(?=\s*[-–]|$)', title_block)
+            if m_salle_inl:
+                if not room: room = _normalize_room(m_salle_inl.group(1).strip())
+                title_block = (title_block[:m_salle_inl.start()] + title_block[m_salle_inl.end():]).strip(" -—")
+
             # Retire l'écho de matière en fin de titre (ex: "… Cheminée toilettes) Divers")
             for label, _ in _SUBJECTS:
                 m_echo = re.search(rf'\b{re.escape(label)}\s*$', title_block, re.IGNORECASE)
@@ -540,7 +563,10 @@ def parse_announcement(text: str) -> dict | None:
                         title_block = trimmed
                     break
 
-            # Extrait matière depuis "[Matière] : [Titre du cours]"
+            # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
+            title_block = re.sub(r'^[Cc]ours\s+', '', title_block).strip()
+
+            # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
             if m_col:
                 potential = m_col.group(1).strip()
