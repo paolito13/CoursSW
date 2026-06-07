@@ -106,7 +106,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.5"
+VERSION        = "1.4.6"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -969,6 +969,14 @@ class App(tk.Tk):
         self.worker: Worker | None = None
         self._build_ui()
         self._setup_tray()
+
+        # Active le démarrage automatique à la première installation
+        if not is_startup_enabled():
+            try:
+                set_startup(True)
+                self._startup_var.set(True)
+            except Exception:
+                pass
 
         # Vérification GitHub au démarrage (avant de lancer le worker)
         threading.Thread(
