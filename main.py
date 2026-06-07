@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.19"
+VERSION        = "1.5.20"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -778,11 +778,13 @@ def _pil_to_b64(pil_img: Image.Image) -> str:
     pil_img.save(buf, format="PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode()
 
-def send_announcement(tok: str, ann: dict, screenshot_b64: str | None = None, on_log=None) -> bool:
+def send_announcement(tok: str, ann: dict, screenshot_b64: str | None = None, ocr_log: str | None = None, on_log=None) -> bool:
     try:
         payload: dict = {"exeToken": tok, "announcement": ann}
         if screenshot_b64:
             payload["screenshot"] = screenshot_b64
+        if ocr_log:
+            payload["ocr_log"] = ocr_log
         r = requests.post(API_ANNOUNCE, json=payload, timeout=30)
         if on_log: on_log(f"Announce réponse ({r.status_code}): {r.text[:120]}")
         return r.ok
@@ -1031,7 +1033,7 @@ class Worker(threading.Thread):
                             scr_b64 = _pil_to_b64(best_pil)
                         except Exception:
                             scr_b64 = None
-                        ok = send_announcement(self.tok, ann, screenshot_b64=scr_b64, on_log=self.on_log)
+                        ok = send_announcement(self.tok, ann, screenshot_b64=scr_b64, ocr_log=text, on_log=self.on_log)
                         label = "cours" if ann["type"] == "cours" else "générique"
                         self.on_log(
                             f"{'✅' if ok else '⚠️'} Annonce {label} "
