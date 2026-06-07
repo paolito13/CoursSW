@@ -108,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.3"
+VERSION        = "1.5.4"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -464,11 +464,21 @@ def parse_announcement(text: str) -> dict | None:
         m = re.search(r'ANNONCE\s+DE\s+COURS\s*(.*)', joined, re.IGNORECASE)
         payload = m.group(1).strip() if m else joined
 
-        # Normalise les tokens ALL CAPS en Title Case (OCR parfois tout en majuscules)
-        payload = ' '.join(
-            w.capitalize() if w.isupper() and len(w) > 1 and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', w) else w
-            for w in payload.split()
-        )
+        # Normalise les tokens ALL CAPS en Title Case
+        # Gère aussi les mots avec point interne (ex: CALAUDR.A → Calaudr.A)
+        def _norm_tok(w: str) -> str:
+            if len(w) <= 1:
+                return w
+            if '.' in w:
+                parts = w.split('.')
+                return '.'.join(
+                    p.capitalize() if p and p.isupper() and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', p) else p
+                    for p in parts
+                )
+            if w.isupper() and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', w):
+                return w.capitalize()
+            return w
+        payload = ' '.join(_norm_tok(w) for w in payload.split())
 
         # ── Auteur ────────────────────────────────────────────────────────────
         # Token nom : mot commençant par majuscule (Dupont) OU initiale seule (L / L.)
@@ -487,6 +497,8 @@ def parse_announcement(text: str) -> dict | None:
             # Sécurité : retire les mots _STOP qui auraient glissé en fin de nom
             author = re.sub(rf'\s+(?:{_STOP})$', '', author).strip()
             payload = payload[m_a.end():].strip()
+            # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
+            payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
 
         # ── Séparation description / détails ──────────────────────────────────
         message = ""
@@ -622,12 +634,11 @@ def parse_announcement(text: str) -> dict | None:
             year = _year_from_header
 
         # Nettoie les fuites OCR dans le message :
-        # 1. lettre isolée au milieu suivie de texte → coupe (emoji mal lu + matière qui fuit)
-        #    ex : "L'Essence Onirique g Alchimie - Boianiqye 11" → "L'Essence Onirique"
-        message = re.sub(r'(?<=\w)\s+[a-zA-Z]\s+(?=[A-Za-zÀ-ü]{4}).*$', '', message).strip()
-        # 2. lettre isolée en toute fin de message → coupe
-        #    ex : "Sort (Secatrix) - Cheminée Astronomie g" → "Sort (Secatrix) - Cheminée Astronomie"
-        message = re.sub(r'\s+[a-zA-Z]$', '', message).strip()
+        # Coupe dès qu'une lettre isolée apparaît (emoji mal lu) — tout ce qui suit est bruit
+        # ex : "L'Essence Onirique g Alchimie…"  → "L'Essence Onirique"
+        # ex : "…Astronomie g 11 Histoire…"       → "…Astronomie"
+        # ex : "…Cheminée Astronomie g"           → "…Cheminée Astronomie"
+        message = re.sub(r'\s+[a-zA-Z](\s+.*)?$', '', message).strip()
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 4:
