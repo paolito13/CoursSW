@@ -108,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.9"
+VERSION        = "1.4.10"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -368,11 +368,12 @@ _STOP = (
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
 )
 
-# Année : tolère les typos OCR (ann→ar, ème→eme, etc.)
+# Année : tolère les typos OCR (ann→ar, ème→eme, etc.) + chiffres romains (I→VII)
 _YEAR_RE = (
-    r'(?:toutes?\s+(?:les\s+)?[aA][a-zà-ü]{2,6}s?'     # toutes les années
-    r'|\d+\s*(?:[eèê]me?|[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'  # 4e/4ème/4eme/6ème ann(ée|arée)
-    r'|[1I]\s*(?:[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'    # 1ère / 1ere année
+    r'(?:toutes?\s+(?:les\s+)?[aA][a-zà-ü]{2,6}s?'                          # toutes les années
+    r'|\d+\s*(?:[eèê]me?|[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'                 # 4e/4ème/6ème année
+    r'|[1I]\s*(?:[eè]re?|e)\s+[aA][a-zà-ü]{2,6}s?'                          # 1ère / 1ere année
+    r'|(?:VII|VI|IV|VIII|V|III|II)\s*(?:[eèê]me?|[eè]re?|e)?\s+[aA][a-zà-ü]{2,6}s?'  # IV ème / V ème
     r')'
 )
 
@@ -450,6 +451,11 @@ def parse_announcement(text: str) -> dict | None:
 
     if not is_cours and not is_general:
         return None
+
+    # Extrait l'année depuis le texte COMPLET — elle apparaît souvent avant
+    # "ANNONCE DE COURS" (colonne gauche du popup) et serait perdue sinon
+    _year_hits_full = list(re.finditer(_YEAR_RE, joined, re.IGNORECASE))
+    _year_from_header = _year_hits_full[0].group(0).strip() if _year_hits_full else ""
 
     # ══════════════════════════════════════════════════════════════════════════
     if is_cours:
@@ -609,8 +615,17 @@ def parse_announcement(text: str) -> dict | None:
             else:
                 message = title_block
 
+        # Fallback : année extraite de l'en-tête (avant "ANNONCE DE COURS")
+        if not year and _year_from_header:
+            year = _year_from_header
+
+        # Nettoie les fuites OCR dans le message :
+        # un emoji mal lu (lettre isolée) + texte de la matière qui suit
+        # ex : "L'Essence Onirique g Alchimie - Boianiqye 11" → "L'Essence Onirique"
+        message = re.sub(r'(?<=\w)\s+[a-zA-Z]\s+(?=[A-Za-zÀ-ü]{4}).*$', '', message).strip()
+
         # Rejette faux positifs OCR
-        if len(author) < 3 or len(message) < 8:
+        if len(author) < 3 or len(message) < 4:
             return None
 
         ann: dict = {"type": "cours", "author": author, "message": message}
@@ -894,35 +909,38 @@ class Worker(threading.Thread):
                     time.sleep(2)
                     continue
 
-                # Multi-capture : 3 screens espacés de 0.5s → garde le meilleur OCR
-                captures: list[tuple[Image.Image, str, dict | None]] = []
-                for i in range(3):
-                    if i > 0:
+                # Capture initiale rapide
+                pil  = capture_region(rect)
+                text = ocr_image(pil)
+                best_pil, best_text = pil, text
+
+                # Multi-capture uniquement si une annonce semble présente (évite de ralentir le cycle normal)
+                if text.strip() and re.search(r'ANNONCE\s+DE\s+COURS', text, re.IGNORECASE):
+                    captures: list[tuple[Image.Image, str]] = [(pil, text)]
+                    for _ in range(2):
                         time.sleep(0.5)
-                    try:
-                        pil_i = capture_region(rect)
-                        txt_i = ocr_image(pil_i)
-                        ann_i = parse_announcement(txt_i) if txt_i.strip() else None
-                        captures.append((pil_i, txt_i, ann_i))
-                    except Exception as ce:
-                        self.on_log(f"❌ Capture {i+1}: {type(ce).__name__}: {ce}")
+                        try:
+                            pil_i = capture_region(rect)
+                            txt_i = ocr_image(pil_i)
+                            captures.append((pil_i, txt_i))
+                        except Exception:
+                            pass
 
-                if not captures:
-                    time.sleep(CAPTURE_INTERVAL)
-                    continue
+                    def _ocr_score(txt: str) -> int:
+                        a = parse_announcement(txt) if txt.strip() else None
+                        if a is None: return -1
+                        s = 0
+                        if a.get('subject'): s += 10
+                        if a.get('room'):    s += 10
+                        if a.get('year'):    s += 10
+                        if a.get('delay'):   s += 10
+                        s += min(len(a.get('message', '')), 80)
+                        return s
 
-                def _cap_score(c: tuple) -> int:
-                    _, _, a = c
-                    if a is None: return -1
-                    s = 0
-                    if a.get('subject'): s += 10
-                    if a.get('room'):    s += 10
-                    if a.get('year'):    s += 10
-                    if a.get('delay'):   s += 10
-                    s += min(len(a.get('message', '')), 80)
-                    return s
+                    best_pil, best_text = max(captures, key=lambda c: _ocr_score(c[1]))
 
-                best_pil, text, ann = max(captures, key=_cap_score)
+                text = best_text
+                ann  = parse_announcement(text) if text.strip() else None
 
                 if ann:
                     self.on_log(f"[OCR✅] {' '.join(text.split())[:120]}")
