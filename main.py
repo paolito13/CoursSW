@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.7"
+VERSION        = "1.5.8"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -381,7 +381,7 @@ _YEAR_RE = (
     rf'(?:toutes?\s+(?:les\s+)?{_ANN}'                                        # toutes les années
     rf'|\d+\s*(?:[eèêé]me?|[eèé]re?|[eè])\s+{_ANN}'                         # 4ème année / 1ère année
     rf'|[1I]\s*(?:[eèé]re?|[eè])\s+{_ANN}'                                   # 1ère / 1ere année
-    rf'|(?:VII|VI|IV|VIII|V|III|II)\s*(?:[eèêé]me?|[eèé]re?|[eè])?\s+{_ANN}' # IV ème / V ème année
+    rf'|(?:X|IX|VIII|VII|VI|V|IV|III|II)\s*(?:[eèêé]me?|[eèé]re?|[eè])?\s+{_ANN}' # X ème / V ème / IV ème année (X = OCR lit V comme X)
     rf'|{_ANN}\s*:?\s*\d+\s*(?:[eèêé]me?|[eèé]re?|[eè])?'                   # Année: 1er / ANNÉE 1ER
     r')'
 )
@@ -621,6 +621,19 @@ def parse_announcement(text: str) -> dict | None:
                         subject = _normalize_subject(label)
                         title_block = trimmed
                     break
+            else:
+                # Tentative fuzzy : les derniers 1-3 mots via trigram (tolère les typos OCR)
+                words = title_block.split()
+                for n in (3, 2, 1):
+                    if len(words) > n:
+                        cand = ' '.join(words[-n:])
+                        norm = _normalize_subject(cand)
+                        if norm and norm.lower() != cand.lower():
+                            trimmed = ' '.join(words[:-n]).strip(' -—,')
+                            if len(trimmed) > 5:
+                                if not subject: subject = norm
+                                title_block = trimmed
+                            break
 
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_block = re.sub(r'^[Cc]ours\s+', '', title_block).strip()
@@ -644,10 +657,14 @@ def parse_announcement(text: str) -> dict | None:
 
         # Nettoie les fuites OCR dans le message :
         # Coupe dès qu'une lettre isolée apparaît (emoji mal lu) — tout ce qui suit est bruit
-        # Artefact OCR : lettre minuscule seule en début (ex: emoji → "g Alchimie")
-        message = re.sub(r'^[a-z]\s+', '', message)
-        # Lettre seule isolée en toute fin (majuscule ou minuscule)
-        message = re.sub(r'\s+[a-zA-Z]$', '', message).strip()
+        # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
+        message = re.sub(r'^[a-z]\s+', '', message)          # en début : "g Alchimie" → "Alchimie"
+        message = re.sub(r'\s+[a-z](?=\s)', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
+        message = re.sub(r'\s+[a-z]$', '', message)          # en fin minuscule
+        message = re.sub(r'\s+[A-Z]$', '', message)          # en fin majuscule isolée
+        # Retire les résidus d'année qui ont fui dans le message (ex: "X Eme Année" / "5ème Année")
+        message = re.sub(_YEAR_RE, '', message, flags=re.IGNORECASE).strip(' -—,')
+        message = re.sub(r'\s{2,}', ' ', message).strip()
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 4:
