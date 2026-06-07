@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.15"
+VERSION        = "1.5.16"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -550,6 +550,8 @@ def parse_announcement(text: str) -> dict | None:
                 title_raw = (title_raw[:m_salle_inl.start()] + title_raw[m_salle_inl.end():]).strip(" -—")
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_raw = re.sub(r'^[Cc]ours\s+', '', title_raw).strip()
+            # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
+            title_raw = re.sub(r'^(?:de|du|d\'|des|en|la|le|les|au[x]?)\s+', '', title_raw, flags=re.IGNORECASE)
             # "[Matière] : [Titre du cours]" (1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_raw, re.DOTALL)
             if m_col:
@@ -645,6 +647,8 @@ def parse_announcement(text: str) -> dict | None:
 
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_block = re.sub(r'^[Cc]ours\s+', '', title_block).strip()
+            # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
+            title_block = re.sub(r'^(?:de|du|d\'|des|en|la|le|les|au[x]?)\s+', '', title_block, flags=re.IGNORECASE)
 
             # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
@@ -693,7 +697,11 @@ def parse_announcement(text: str) -> dict | None:
         # Retire les suffixes ordinaux orphelins en fin de message (ex: "Cours 2 Eme" → "Cours 2")
         # "2 Eme" vient de "2ème année" dont "année" était dans la section icône et non dans le titre
         message = re.sub(r'(?:\s+\d+)?\s+[eèêé]m[eé]?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
-        message = re.sub(r'\s{2,}', ' ', message).strip()
+        # Nettoie les doubles virgules laissées par le retrait de l'année (ex: ", , En" → ", En")
+        message = re.sub(r',\s*,+', ',', message)
+        # Retire les prépositions isolées en fin de message (ex: "Sort (Luridium), En" → "Sort (Luridium)")
+        message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
+        message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 4:
