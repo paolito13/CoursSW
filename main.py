@@ -108,7 +108,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.4.10"
+VERSION        = "1.5.0"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -764,23 +764,25 @@ def check_github_update(on_log, on_notify=None):
 # ── Worker ────────────────────────────────────────────────────────────────────
 def _do_self_update(download_url: str, on_log, on_notify=None):
     """
-    Mise à jour silencieuse et propre :
-    - Télécharge le ZIP dans le dossier de l'exe
-    - Extrait uniquement CourSW.exe → CourSW_new.exe dans le même dossier
-    - Un .bat invisible remplace l'exe et relance — aucun dossier externe créé
+    Mise à jour --onedir : remplace le dossier CourSW/ entier.
+    1. Télécharge le ZIP dans le dossier parent
+    2. Extrait dans CourSW_new/ (dossier temporaire)
+    3. Un .bat (dans le parent) : renomme CourSW→CourSW_old, déplace le nouveau,
+       supprime l'ancien, relance — aucun fichier résiduel
     """
-    import zipfile
+    import zipfile, shutil
     def _notify(title: str, msg: str):
         if on_notify:
             try: on_notify(title, msg)
             except Exception: pass
     try:
         exe_path    = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve()
-        install_dir = exe_path.parent
-        zip_path    = install_dir / "CourSW_update.zip"
-        new_exe     = install_dir / "CourSW_new.exe"
-        old_exe     = install_dir / "CourSW_old.exe"
-        bat_path    = install_dir / "update.bat"
+        install_dir = exe_path.parent          # …/CourSW/
+        parent_dir  = install_dir.parent       # …/
+        zip_path    = parent_dir / "CourSW_update.zip"
+        new_dir     = parent_dir / "CourSW_new"
+        old_dir     = parent_dir / "CourSW_old"
+        bat_path    = parent_dir / "update.bat"
 
         on_log("⬇️  Téléchargement de la mise à jour…")
         _notify("🔄 Mise à jour CourSW", "Téléchargement en cours…")
@@ -792,24 +794,25 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
                     f.write(chunk)
 
         on_log("📦 Extraction…")
+        if new_dir.exists():
+            shutil.rmtree(new_dir)
         with zipfile.ZipFile(zip_path, 'r') as z:
-            # Cherche CourSW.exe n'importe où dans le ZIP
-            candidates = [n for n in z.namelist() if n.lower().endswith('coursw.exe')]
-            if not candidates:
-                raise RuntimeError("CourSW.exe introuvable dans le ZIP")
-            with z.open(candidates[0]) as src, open(new_exe, 'wb') as dst:
-                dst.write(src.read())
+            z.extractall(new_dir)
 
-        zip_path.unlink(missing_ok=True)
+        # Le ZIP contient un sous-dossier CourSW/ — on le cible directement
+        inner = new_dir / "CourSW"
+        extracted = inner if inner.is_dir() else new_dir
 
-        # .bat : attend que l'exe soit fermé, permute les fichiers, relance
+        # .bat dans le PARENT — remplace le dossier entier, relance, se supprime
         bat = (
             '@echo off\n'
             'ping 127.0.0.1 -n 4 > nul\n'
-            f'if exist "{old_exe}" del /f /q "{old_exe}"\n'
-            f'rename "{exe_path}" "CourSW_old.exe"\n'
-            f'rename "{new_exe}" "CourSW.exe"\n'
-            f'if exist "{old_exe}" del /f /q "{old_exe}"\n'
+            f'if exist "{old_dir}" rmdir /s /q "{old_dir}"\n'
+            f'rename "{install_dir}" "CourSW_old"\n'
+            f'move /y "{extracted}" "{install_dir}"\n'
+            f'if exist "{old_dir}" rmdir /s /q "{old_dir}"\n'
+            f'rmdir /s /q "{new_dir}" 2>nul\n'
+            f'del "{zip_path}" 2>nul\n'
             f'start "" "{exe_path}"\n'
             'del "%~f0"\n'
         )
@@ -826,9 +829,11 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
     except Exception as e:
         on_log(f"⚠️  Mise à jour échouée : {e}")
         _notify("⚠️ Mise à jour échouée", str(e)[:80])
-        # Nettoyage en cas d'erreur
-        for p in [zip_path, new_exe, bat_path]:
+        for p in [zip_path, bat_path]:
             try: p.unlink()
+            except Exception: pass
+        if new_dir.exists():
+            try: shutil.rmtree(new_dir)
             except Exception: pass
 
 
