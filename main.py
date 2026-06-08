@@ -696,7 +696,7 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s*', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
         message = re.sub(r'^(?:hdm|hmd)\s+', '', message, flags=re.IGNORECASE)  # retire abréviation matière OCR
-message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
+        message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
         message = re.sub(r'^[a-z]\s+', '', message)          # en début : "g Alchimie" → "Alchimie"
         message = re.sub(r'\s+[a-z](?=\s)', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
@@ -711,10 +711,10 @@ message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu AL
         message = re.sub(r',\s*,+', ',', message)
         # Retire les prépositions isolées en fin de message (ex: "Sort (Luridium), En" → "Sort (Luridium)")
         # Ajouter avant le nettoyage final : retrait de la salle si elle fuit dans le message
-message = re.sub(rf'\s*/\s*{re.escape(room)}.*$', '', message, flags=re.IGNORECASE) if room else message
-# Retrait des artefacts OCR : espaces/chiffres orphelins
-message = re.sub(r'\s+\d\s+\d(?=\s|$)', '', message)
-message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
+        message = re.sub(rf'\s*/\s*{re.escape(room)}.*$', '', message, flags=re.IGNORECASE) if room else message
+        # Retrait des artefacts OCR : espaces/chiffres orphelins
+        message = re.sub(r'\s+\d\s+\d(?=\s|$)', '', message)
+        message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Rejette faux positifs OCR
