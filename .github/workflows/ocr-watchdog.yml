@@ -1,0 +1,337 @@
+name: OCR Watchdog
+
+on:
+  schedule:
+    - cron: '17 * * * *'   # toutes les heures à :17
+  workflow_dispatch:         # déclenchement manuel possible
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout CoursSW
+        uses: actions/checkout@v4
+        with:
+          repository: paolito13/CoursSW
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: CoursSW
+
+      - name: Checkout Almanach-PEH
+        uses: actions/checkout@v4
+        with:
+          repository: paolito13/Almanach-PEH
+          token: ${{ secrets.GH_PAT }}
+          path: Almanach-PEH
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install anthropic SDK
+        run: pip install anthropic requests
+
+      - name: Run OCR analysis and auto-fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          python - <<'PYEOF'
+          import anthropic
+          import requests
+          import json
+          import os
+          import re
+          import base64
+          import sys
+
+          SITE = "https://almanach-peh.vercel.app"
+          ANALYZED_FILE = "CoursSW/.ocr_analyzed_ids.txt"
+          MAIN_PY = "CoursSW/main.py"
+
+          # --- Charger IDs déjà analysés ---
+          analyzed = set()
+          if os.path.exists(ANALYZED_FILE):
+              with open(ANALYZED_FILE) as f:
+                  analyzed = set(l.strip() for l in f if l.strip())
+
+          # --- Récupérer les annonces ---
+          try:
+              r = requests.get(f"{SITE}/api/cours/announce", timeout=15)
+              announcements = r.json()
+          except Exception as e:
+              print(f"Erreur fetch announce: {e}")
+              sys.exit(0)
+
+          nouvelles = [
+              a for a in announcements
+              if a.get("type") == "cours"
+              and a.get("id") not in analyzed
+              and (a.get("hasOcrLog") or a.get("hasScreenshot"))
+          ]
+
+          if not nouvelles:
+              print("Aucune nouvelle annonce à analyser.")
+              sys.exit(0)
+
+          print(f"{len(nouvelles)} nouvelle(s) annonce(s) à analyser.")
+
+          # --- Lire main.py ---
+          with open(MAIN_PY, encoding="utf-8") as f:
+              main_py_content = f.read()
+
+          client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+          fixes_applied = []
+
+          for ann in nouvelles:
+              aid = ann["id"]
+              print(f"\nAnalyse annonce {aid}...")
+
+              # Récupérer log OCR
+              ocr_log = None
+              if ann.get("hasOcrLog"):
+                  try:
+                      r = requests.get(f"{SITE}/api/cours/ocrlog/{aid}", timeout=10)
+                      ocr_log = r.json().get("log")
+                  except:
+                      pass
+
+              # Récupérer screenshot
+              screenshot_b64 = None
+              if ann.get("hasScreenshot"):
+                  try:
+                      r = requests.get(f"{SITE}/api/cours/screenshot/{aid}", timeout=15)
+                      if r.status_code == 200:
+                          screenshot_b64 = base64.b64encode(r.content).decode()
+                  except:
+                      pass
+
+              # Construire le prompt pour Claude
+              prompt_parts = []
+              prompt_parts.append(f"""Tu analyses une annonce de cours parsée par OCR et tu dois détecter si le parsing est incorrect.
+
+Champs parsés :
+- author: {ann.get('author', '(vide)')}
+- title: {ann.get('title', '(vide)')}
+- room: {ann.get('room', '(vide)')}
+- year: {ann.get('year', '(vide)')}
+- message: {ann.get('message', '(vide)')}
+- delay: {ann.get('delay', '(vide)')}
+""")
+
+              if ocr_log:
+                  prompt_parts.append(f"\nTexte brut OCR :\n```\n{ocr_log}\n```\n")
+
+              prompt_parts.append(f"""
+Voici le code Python actuel de main.py (fonctions de parsing OCR) :
+```python
+{main_py_content}
+```
+
+Anomalies à détecter :
+1. author contient des tokens non-nominatifs (mots tout en majuscules qui ne sont pas des noms : C'EST, DE, EN, DU, LE, etc.)
+2. author a plus de 3 tokens
+3. message commence par une préposition (de, du, d', des, en, la, le, les, au, aux)
+4. message contient ",," ou ", ,"
+5. message se termine par une préposition isolée
+6. message commence par "Initiale Nom" (ex: "R Greenshadow", "F. Dupont")
+7. room est clairement faux (ne correspond à aucune salle de Poudlard visible dans le texte OCR ou le screenshot)
+8. title contient une préposition dupliquée ("Cours de de X")
+
+RÈGLE ABSOLUE : Ne corriger que si l'anomalie est CLAIREMENT visible et certaine.
+
+Si tu détectes une anomalie :
+1. Identifie précisément la ligne/regex dans main.py à corriger
+2. Propose une correction minimale et ciblée
+3. Réponds en JSON avec ce format exact :
+{{"anomalie": "description courte", "fix_old": "texte exact à remplacer dans main.py", "fix_new": "remplacement"}}
+
+Si aucune anomalie certaine : réponds uniquement avec le JSON {{"anomalie": null}}
+""")
+
+              # Messages pour Claude
+              messages = []
+              content = []
+
+              if screenshot_b64:
+                  content.append({
+                      "type": "image",
+                      "source": {
+                          "type": "base64",
+                          "media_type": "image/png",
+                          "data": screenshot_b64
+                      }
+                  })
+
+              content.append({"type": "text", "text": "\n".join(prompt_parts)})
+              messages.append({"role": "user", "content": content})
+
+              try:
+                  resp = client.messages.create(
+                      model="claude-sonnet-4-6",
+                      max_tokens=1024,
+                      messages=messages
+                  )
+                  result_text = resp.content[0].text.strip()
+                  print(f"Réponse Claude : {result_text[:200]}")
+
+                  # Extraire JSON
+                  json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+                  if not json_match:
+                      print("Pas de JSON dans la réponse.")
+                      analyzed.add(aid)
+                      continue
+
+                  result = json.loads(json_match.group())
+
+                  if result.get("anomalie") and result.get("fix_old") and result.get("fix_new"):
+                      old = result["fix_old"]
+                      new = result["fix_new"]
+                      if old in main_py_content:
+                          main_py_content = main_py_content.replace(old, new, 1)
+                          fixes_applied.append(result["anomalie"])
+                          print(f"Fix appliqué : {result['anomalie']}")
+                      else:
+                          print(f"fix_old introuvable dans main.py, ignoré.")
+                  else:
+                      print("Aucune anomalie détectée.")
+
+              except Exception as e:
+                  print(f"Erreur Claude : {e}")
+
+              analyzed.add(aid)
+
+          # --- Sauvegarder IDs analysés ---
+          with open(ANALYZED_FILE, "w") as f:
+              f.write("\n".join(sorted(analyzed)) + "\n")
+
+          if not fixes_applied:
+              print("\nAucun fix à appliquer.")
+              sys.exit(0)
+
+          # --- Bump version ---
+          version_match = re.search(r'VERSION\s*=\s*"(\d+\.\d+\.\d+)"', main_py_content)
+          if not version_match:
+              print("VERSION introuvable dans main.py")
+              sys.exit(1)
+
+          old_ver = version_match.group(1)
+          parts = old_ver.split(".")
+          parts[2] = str(int(parts[2]) + 1)
+          new_ver = ".".join(parts)
+          main_py_content = main_py_content.replace(f'VERSION = "{old_ver}"', f'VERSION = "{new_ver}"')
+
+          with open(MAIN_PY, "w", encoding="utf-8") as f:
+              f.write(main_py_content)
+
+          print(f"\nVersion : {old_ver} → {new_ver}")
+          print(f"Fixes : {', '.join(fixes_applied)}")
+
+          # Écrire les infos pour les étapes suivantes
+          with open("fix_info.txt", "w") as f:
+              f.write(f"{new_ver}\n")
+              f.write("; ".join(fixes_applied) + "\n")
+
+          PYEOF
+
+      - name: Commit and push fixes (CoursSW)
+        if: ${{ hashFiles('fix_info.txt') != '' }}
+        working-directory: CoursSW
+        run: |
+          INFO=$(cat ../fix_info.txt)
+          NEW_VER=$(echo "$INFO" | head -1)
+          FIXES=$(echo "$INFO" | tail -1)
+
+          git config user.name "OCR Watchdog"
+          git config user.email "ocr-watchdog@almanach-peh"
+          git add main.py .ocr_analyzed_ids.txt
+          git commit -m "fix : correction OCR automatique — $FIXES" || echo "Rien à commit"
+          git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git HEAD:main
+
+      - name: Update Almanach-PEH (version bump + patchnote)
+        if: ${{ hashFiles('fix_info.txt') != '' }}
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          python - <<'PYEOF'
+          import re, os
+
+          with open("fix_info.txt") as f:
+              lines = f.read().strip().split("\n")
+          new_ver = lines[0]
+          fixes = lines[1] if len(lines) > 1 else "correction OCR"
+
+          # --- COURS_REQUIRED_VERSION ---
+          for root, dirs, files in os.walk("Almanach-PEH/src"):
+              for fname in files:
+                  if not fname.endswith((".ts", ".tsx", ".js", ".env")):
+                      continue
+                  fpath = os.path.join(root, fname)
+                  with open(fpath, encoding="utf-8") as f:
+                      content = f.read()
+                  if "COURS_REQUIRED_VERSION" in content:
+                      new_content = re.sub(
+                          r"(COURS_REQUIRED_VERSION['\"]?\s*[:=]\s*['\"]?)[\d.]+",
+                          lambda m: m.group(0).rsplit(m.group(0).split()[-1], 1)[0] + new_ver,
+                          content
+                      )
+                      # Approche plus simple
+                      new_content = re.sub(r'(?<=COURS_REQUIRED_VERSION=)[\d.]+', new_ver, content)
+                      new_content2 = re.sub(r"(COURS_REQUIRED_VERSION['\"]?\s*[=:]\s*['\"])[\d.]+", lambda m: m.group(1) + new_ver, new_content)
+                      if new_content2 != content:
+                          with open(fpath, "w", encoding="utf-8") as f:
+                              f.write(new_content2)
+                          print(f"COURS_REQUIRED_VERSION mis à jour dans {fpath}")
+
+          # --- CoursSection.tsx : liens téléchargement ---
+          cours_section = "Almanach-PEH/src/components/cours/CoursSection.tsx"
+          with open(cours_section, encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(
+              r'releases/download/v[\d.]+/CourSW\.zip',
+              f'releases/download/v{new_ver}/CourSW.zip',
+              content
+          )
+          content = re.sub(r'⬇️ v[\d.]+', f'⬇️ v{new_ver}', content)
+          with open(cours_section, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          # --- patchnotes.ts ---
+          patchnotes = "Almanach-PEH/src/data/patchnotes.ts"
+          with open(patchnotes, encoding="utf-8") as f:
+              pn_content = f.read()
+          ver_match = re.search(r"version:\s*'v([\d.]+)'", pn_content)
+          if ver_match:
+              old_pn_ver = ver_match.group(1)
+              pn_parts = old_pn_ver.split(".")
+              pn_parts[-1] = str(int(pn_parts[-1]) + 1)
+              new_pn_ver = ".".join(pn_parts)
+              new_entry = f"""  {{
+    version: 'v{new_pn_ver}',
+    date: '{__import__('datetime').date.today().strftime('%d/%m/%Y')}',
+    changes: [
+      'fix OCR : {fixes} (CourSW v{new_ver})',
+    ],
+  }},\n"""
+              pn_content = pn_content.replace("export const patchnotes", f"// auto\nexport const patchnotes", 1)
+              pn_content = re.sub(r'(export const patchnotes\s*=\s*\[)', r'\1\n' + new_entry, pn_content.replace("// auto\nexport const patchnotes", "export const patchnotes", 1))
+              with open(patchnotes, "w", encoding="utf-8") as f:
+                  f.write(pn_content)
+              print(f"patchnotes.ts : v{old_pn_ver} → v{new_pn_ver}")
+
+          PYEOF
+
+      - name: Commit and push Almanach-PEH
+        if: ${{ hashFiles('fix_info.txt') != '' }}
+        working-directory: Almanach-PEH
+        run: |
+          NEW_VER=$(head -1 ../fix_info.txt)
+          git config user.name "OCR Watchdog"
+          git config user.email "ocr-watchdog@almanach-peh"
+          git add -A
+          git commit -m "chore : bump COURS_REQUIRED_VERSION=$NEW_VER + patchnote OCR auto" || echo "Rien à commit"
+          git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/Almanach-PEH.git HEAD:main
