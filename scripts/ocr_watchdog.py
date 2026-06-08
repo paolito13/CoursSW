@@ -165,20 +165,31 @@ Si aucune anomalie : réponds uniquement {{"anomalie": null}}
         result_text = resp.content[0].text.strip()
         print(f"Réponse: {result_text[:300]}")
 
-        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-        if json_match:
-            result = json.loads(json_match.group())
-            if result.get("anomalie") and result.get("fix_old") and result.get("fix_new"):
-                old = result["fix_old"]
-                new = result["fix_new"]
-                if old in main_py_content:
-                    main_py_content = main_py_content.replace(old, new, 1)
-                    fixes_applied.append(result["anomalie"])
-                    print(f"Fix: {result['anomalie']}")
-                else:
-                    print("fix_old introuvable, ignoré.")
+        # Extraire le premier JSON valide (Claude peut ajouter du texte après)
+        result = None
+        for m in re.finditer(r'\{', result_text):
+            try:
+                end = result_text.rindex('}', m.start()) + 1
+                result = json.loads(result_text[m.start():end])
+                break
+            except Exception:
+                continue
+
+        if result is None:
+            print("Pas de JSON valide dans la réponse.")
+        elif result.get("anomalie") and result.get("fix_old") and result.get("fix_new"):
+            old = result["fix_old"]
+            new = result["fix_new"]
+            if old in main_py_content:
+                main_py_content = main_py_content.replace(old, new, 1)
+                # Message court pour le commit
+                short_fix = result["anomalie"][:80]
+                fixes_applied.append(short_fix)
+                print(f"Fix: {short_fix}")
             else:
-                print("Aucune anomalie.")
+                print("fix_old introuvable, ignoré.")
+        else:
+            print("Aucune anomalie.")
     except Exception as e:
         print(f"Erreur Claude: {e}")
 
