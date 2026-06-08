@@ -21,10 +21,23 @@ if os.path.exists(ANALYZED_FILE):
 # --- Annonces récentes ---
 try:
     r = requests.get(f"{SITE}/api/cours/announce", timeout=15)
-    announcements = r.json()
+    raw = r.json()
+    # L'API peut retourner une liste de dicts ou de strings JSON
+    announcements = []
+    items = raw if isinstance(raw, list) else raw.get("announcements", raw.get("data", []))
+    for item in items:
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except Exception:
+                continue
+        if isinstance(item, dict):
+            announcements.append(item)
 except Exception as e:
     print(f"Erreur fetch announce: {e}")
     sys.exit(0)
+
+print(f"Total annonces: {len(announcements)}")
 
 nouvelles = [
     a for a in announcements
