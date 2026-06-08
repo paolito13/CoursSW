@@ -177,17 +177,47 @@ Si aucune anomalie : réponds uniquement {{"anomalie": null}}
 
         if result is None:
             print("Pas de JSON valide dans la réponse.")
-        elif result.get("anomalie") and result.get("fix_old") and result.get("fix_new"):
-            old = result["fix_old"]
-            new = result["fix_new"]
-            if old in main_py_content:
-                main_py_content = main_py_content.replace(old, new, 1)
-                # Message court pour le commit
-                short_fix = result["anomalie"][:80]
-                fixes_applied.append(short_fix)
-                print(f"Fix: {short_fix}")
+        elif result.get("anomalie"):
+            anomalie = result["anomalie"]
+            print(f"Anomalie : {anomalie}")
+            # Créer une GitHub Issue pour que Claude (VS Code) corrige proprement
+            import subprocess
+            screenshot_url = f"{SITE}/api/cours/screenshot/{aid}" if ann.get("hasScreenshot") else "(pas de screenshot)"
+            issue_body = f"""## Anomalie OCR détectée automatiquement
+
+**Annonce ID :** `{aid}`
+
+**Champs parsés :**
+- author: `{author}`
+- title: `{title}`
+- room: `{room}`
+- year: `{year}`
+- message: `{message}`
+
+**Anomalie détectée :** {anomalie}
+
+**Screenshot :** {screenshot_url}
+
+**Log OCR brut :**
+```
+{ocr_log or "(non disponible)"}
+```
+
+---
+*Créé automatiquement par OCR Watchdog — à corriger dans `main.py`*
+"""
+            result_gh = subprocess.run(
+                ["gh", "issue", "create",
+                 "--repo", "paolito13/CoursSW",
+                 "--title", f"[OCR] {anomalie[:80]}",
+                 "--body", issue_body,
+                 "--label", "ocr-anomaly"],
+                capture_output=True, text=True
+            )
+            if result_gh.returncode == 0:
+                print(f"Issue créée : {result_gh.stdout.strip()}")
             else:
-                print("fix_old introuvable, ignoré.")
+                print(f"Erreur création issue : {result_gh.stderr[:200]}")
         else:
             print("Aucune anomalie.")
     except Exception as e:
@@ -199,28 +229,5 @@ Si aucune anomalie : réponds uniquement {{"anomalie": null}}
 with open(ANALYZED_FILE, "w") as f:
     f.write("\n".join(sorted(analyzed)) + "\n")
 
-if not fixes_applied:
-    print("\nAucun fix.")
-    sys.exit(0)
-
-# --- Bump version ---
-version_match = re.search(r'VERSION\s*=\s*"(\d+\.\d+\.\d+)"', main_py_content)
-if not version_match:
-    print("VERSION introuvable")
-    sys.exit(1)
-
-old_ver = version_match.group(1)
-parts = old_ver.split(".")
-parts[2] = str(int(parts[2]) + 1)
-new_ver = ".".join(parts)
-main_py_content = main_py_content.replace(f'VERSION = "{old_ver}"', f'VERSION = "{new_ver}"')
-
-with open(MAIN_PY, "w", encoding="utf-8") as f:
-    f.write(main_py_content)
-
-print(f"\nVersion: {old_ver} -> {new_ver}")
-print(f"Fixes: {', '.join(fixes_applied)}")
-
-with open("fix_info.txt", "w") as f:
-    f.write(f"{new_ver}\n")
-    f.write("; ".join(fixes_applied) + "\n")
+print("\nAnalyse terminée. Issues créées pour les anomalies détectées.")
+sys.exit(0)

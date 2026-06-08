@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
 
     steps:
       - name: Checkout CoursSW
@@ -19,13 +20,6 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: CoursSW
 
-      - name: Checkout Almanach-PEH
-        uses: actions/checkout@v4
-        with:
-          repository: paolito13/Almanach-PEH
-          token: ${{ secrets.GH_PAT }}
-          path: Almanach-PEH
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -34,35 +28,17 @@ jobs:
       - name: Install dependencies
         run: pip install anthropic requests
 
-      - name: Analyse OCR et correction main.py
+      - name: Analyse OCR et création d'issues
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: python CoursSW/scripts/ocr_watchdog.py
 
-      - name: Commit et push CoursSW
-        if: hashFiles('fix_info.txt') != ''
+      - name: Commit IDs analysés
         working-directory: CoursSW
         run: |
-          NEW_VER=$(head -1 ../fix_info.txt)
-          FIXES=$(tail -1 ../fix_info.txt)
           git config user.name "OCR Watchdog"
           git config user.email "ocr-watchdog@almanach-peh"
-          git add main.py .ocr_analyzed_ids.txt
-          SHORT_FIXES=$(echo "$FIXES" | cut -c1-80)
-          git diff --cached --quiet || git commit -m "fix : OCR auto — $SHORT_FIXES"
+          git add .ocr_analyzed_ids.txt
+          git diff --cached --quiet || git commit -m "chore : IDs OCR analysés mis à jour"
           git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git HEAD:main
-
-      - name: Mise à jour Almanach-PEH
-        if: hashFiles('fix_info.txt') != ''
-        run: python CoursSW/scripts/update_almanach.py
-
-      - name: Commit et push Almanach-PEH
-        if: hashFiles('fix_info.txt') != ''
-        working-directory: Almanach-PEH
-        run: |
-          NEW_VER=$(head -1 ../fix_info.txt)
-          git config user.name "OCR Watchdog"
-          git config user.email "ocr-watchdog@almanach-peh"
-          git add -A
-          git diff --cached --quiet || git commit -m "chore : bump COURS_REQUIRED_VERSION=$NEW_VER + patchnote OCR auto"
-          git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/Almanach-PEH.git HEAD:main
