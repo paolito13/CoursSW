@@ -321,7 +321,7 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
 # Salles officielles + leurs variantes OCR / abréviations
 _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
-    ('Salle CMS',                  ['cms']),
+    ('Salle Potions',                  ['cms']),
     ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature']),
     ('Serre 1',                    ['serre 1', 'serre1']),
     ('Serre 2',                    ['serre 2', 'serre2']),
@@ -688,21 +688,28 @@ def parse_announcement(text: str) -> dict | None:
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)
         # Résidu "initiale + Nom propre" en début (ex: "R Greenshadow Club…" → "Club…")
-        message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)
+        message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s*', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
+        message = re.sub(r'^(?:hdm|hmd)\s+', '', message, flags=re.IGNORECASE)  # retire abréviation matière OCR
+message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
+        message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
         message = re.sub(r'^[a-z]\s+', '', message)          # en début : "g Alchimie" → "Alchimie"
         message = re.sub(r'\s+[a-z](?=\s)', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
         message = re.sub(r'\s+[a-z]$', '', message)          # en fin minuscule
-        message = re.sub(r'\s+[A-Z]$', '', message)          # en fin majuscule isolée
+        message = re.sub(r'\s+[A-Z](?:\s+[A-Z]\.?)?$', '', message)          # en fin majuscule isolée ou initiale + majuscule (ex: "Sat F.")
         # Retire les résidus d'année qui ont fui dans le message (ex: "X Eme Année" / "5ème Année")
         message = re.sub(_YEAR_RE, '', message, flags=re.IGNORECASE).strip(' -—,')
         # Retire les suffixes ordinaux orphelins en fin de message (ex: "Cours 2 Eme" → "Cours 2")
         # "2 Eme" vient de "2ème année" dont "année" était dans la section icône et non dans le titre
-        message = re.sub(r'(?:\s+\d+)?\s+[eèêé]m[eé]?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
+        message = re.sub(r'\s+[eèêé]m[eé]?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
         # Nettoie les doubles virgules laissées par le retrait de l'année (ex: ", , En" → ", En")
         message = re.sub(r',\s*,+', ',', message)
         # Retire les prépositions isolées en fin de message (ex: "Sort (Luridium), En" → "Sort (Luridium)")
-        message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
+        # Ajouter avant le nettoyage final : retrait de la salle si elle fuit dans le message
+message = re.sub(rf'\s*/\s*{re.escape(room)}.*$', '', message, flags=re.IGNORECASE) if room else message
+# Retrait des artefacts OCR : espaces/chiffres orphelins
+message = re.sub(r'\s+\d\s+\d(?=\s|$)', '', message)
+message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Rejette faux positifs OCR
