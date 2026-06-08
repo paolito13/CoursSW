@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.25" 
+VERSION        = "1.5.26"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -984,6 +984,9 @@ class Worker(threading.Thread):
         if not hb.get("ok"):
             self.on_log("⚠️  Heartbeat refusé — token invalide ou site inaccessible")
         self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
+        # Affiche "(latest)" si la version est à jour
+        if hb.get("ok") and not hb.get("update_required"):
+            self.after(0, lambda: self.ver_var.set(f"v{VERSION} (latest)"))
         webbrowser.open(SITE_URL)
 
         while self.running:
@@ -1198,6 +1201,9 @@ class App(tk.Tk):
         tk.Label(hdr, text="📡 CourSW", font=("Segoe UI", 17, "bold"), bg=BG, fg=GOLD).pack(side="left")
         tk.Label(hdr, text="  Seven Wands — Observateur de cours",
                  font=("Segoe UI", 9), bg=BG, fg="#4a6a7a").pack(side="left")
+        self.ver_var = tk.StringVar(value=f"v{VERSION}")
+        tk.Label(hdr, textvariable=self.ver_var,
+                 font=("Segoe UI", 8), bg=BG, fg="#3a5a6a").pack(side="right")
 
         self.status_var = tk.StringVar(value="⏳ Démarrage…")
         tk.Label(self, textvariable=self.status_var, font=("Segoe UI", 10),
