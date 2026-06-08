@@ -2,7 +2,7 @@ name: OCR Watchdog
 
 on:
   schedule:
-    - cron: '17 * * * *'   # toutes les heures à :17
+    - cron: '23 */4 * * *'  # toutes les 4 heures
   workflow_dispatch:         # déclenchement manuel possible
 
 jobs:
@@ -79,9 +79,32 @@ jobs:
 
           print(f"{len(nouvelles)} nouvelle(s) annonce(s) à analyser.")
 
-          # --- Lire main.py ---
+          # --- Lire main.py (section parsing uniquement pour minimiser les tokens) ---
           with open(MAIN_PY, encoding="utf-8") as f:
               main_py_content = f.read()
+
+          # Extraire seulement les constantes et fonctions de parsing OCR
+          parsing_section = ""
+          in_block = False
+          relevant_keywords = ("_NAME_", "_STOP", "_ROOMS", "_CAPS", "_ALL_", "VERSION",
+                                "def _parse", "def _extract", "def _clean", "def _best",
+                                "_PREPOSITIONS", "_YEAR", "_DELAY", "_SUBJECT")
+          lines = main_py_content.split("\n")
+          i = 0
+          while i < len(lines):
+              line = lines[i]
+              if any(kw in line for kw in relevant_keywords):
+                  # Inclure le bloc entier (jusqu'à la prochaine ligne non-indentée)
+                  start = max(0, i - 1)
+                  end = i + 1
+                  while end < len(lines) and (lines[end].startswith(" ") or lines[end].startswith("\t") or lines[end].strip() == ""):
+                      end += 1
+                  parsing_section += "\n".join(lines[start:end]) + "\n\n"
+                  i = end
+              else:
+                  i += 1
+          if not parsing_section:
+              parsing_section = main_py_content  # fallback
 
           client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
@@ -127,9 +150,9 @@ Champs parsés :
                   prompt_parts.append(f"\nTexte brut OCR :\n```\n{ocr_log}\n```\n")
 
               prompt_parts.append(f"""
-Voici le code Python actuel de main.py (fonctions de parsing OCR) :
+Voici les constantes et fonctions de parsing OCR de main.py :
 ```python
-{main_py_content}
+{parsing_section}
 ```
 
 Anomalies à détecter :
@@ -172,7 +195,7 @@ Si aucune anomalie certaine : réponds uniquement avec le JSON {{"anomalie": nul
 
               try:
                   resp = client.messages.create(
-                      model="claude-sonnet-4-6",
+                      model="claude-haiku-4-5-20251001",
                       max_tokens=1024,
                       messages=messages
                   )
