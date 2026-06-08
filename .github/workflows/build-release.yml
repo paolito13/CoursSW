@@ -1,0 +1,110 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'main.py'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Lire la version
+        id: version
+        shell: python
+        run: |
+          import re, os
+          with open("main.py", encoding="utf-8") as f:
+              content = f.read()
+          m = re.search(r'VERSION\s*=\s*"([\d.]+)"', content)
+          ver = m.group(1) if m else "0.0.0"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"ver={ver}\n")
+
+      - name: Vérifier si la release existe déjà
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.ver }}" --repo paolito13/CoursSW > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Installer les dépendances
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          pip install pyinstaller requests mss Pillow pywin32 winsdk pystray psutil --quiet
+
+      - name: Build PyInstaller
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          python -m PyInstaller --onedir --windowed `
+            --name "CourSW" `
+            --hidden-import "requests" `
+            --hidden-import "mss" `
+            --hidden-import "PIL" `
+            --hidden-import "PIL.Image" `
+            --hidden-import "win32gui" `
+            --hidden-import "win32con" `
+            --hidden-import "win32process" `
+            --hidden-import "winsdk" `
+            --hidden-import "winsdk.windows.media.ocr" `
+            --hidden-import "winsdk.windows.graphics.imaging" `
+            --hidden-import "winsdk.windows.storage.streams" `
+            --hidden-import "asyncio" `
+            --collect-all "winsdk" `
+            --hidden-import "pystray" `
+            --collect-all "pystray" `
+            --hidden-import "psutil" `
+            main.py
+
+      - name: Créer le ZIP
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          Compress-Archive -Path "dist\CourSW" -DestinationPath "dist\CourSW.zip"
+
+      - name: Créer la release GitHub
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh release create "v${{ steps.version.outputs.ver }}" `
+            "dist\CourSW.zip" `
+            --repo paolito13/CoursSW `
+            --title "CourSW v${{ steps.version.outputs.ver }}" `
+            --notes "Build automatique depuis GitHub Actions"
+
+      - name: Mettre à jour les liens sur Almanach-PEH
+        if: steps.check.outputs.exists == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          VER="${{ steps.version.outputs.ver }}"
+          git clone https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/Almanach-PEH.git almanach
+          cd almanach
+
+          # CoursSection.tsx — liens de téléchargement
+          sed -i "s|releases/download/v[0-9.]\+/CourSW\.zip|releases/download/v${VER}/CourSW.zip|g" src/components/cours/CoursSection.tsx
+          sed -i "s|⬇️ v[0-9.]\+|⬇️ v${VER}|g" src/components/cours/CoursSection.tsx
+
+          git config user.name "Build Bot"
+          git config user.email "build-bot@almanach-peh"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore : liens téléchargement → v${VER} (build auto)"
+          git push
