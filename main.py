@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.24"
+VERSION        = "1.5.25"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -373,6 +373,7 @@ _STOP = (
     r'|[Dd][ée]fense|[Dd]ivination|[Aa]rithmancie|[Ss]oins'
     r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature'
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
+    r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
@@ -615,7 +616,11 @@ def parse_announcement(text: str) -> dict | None:
             # Extrait "- Année: X" et "- Salle: X" inline dans le titre
             m_annee = re.search(r'\s*[-–]\s*[Aa]nn[ée]e?\s*:\s*([^\-–]+?)(?=\s*[-–]|$)', title_block)
             if m_annee:
-                if not year: year = m_annee.group(1).strip()
+                if not year:
+                    year_raw = m_annee.group(1).strip()
+                    # Tronquer après le token ordinal (évite de capturer la matière qui suit)
+                    _ord = re.match(r'(?:toutes?\s+les?\s*)?(?:\d+|[IVX]+)\s*[eèêéè][mre][eé]?', year_raw, re.IGNORECASE)
+                    year = _ord.group(0).strip() if _ord else year_raw
                 title_block = (title_block[:m_annee.start()] + title_block[m_annee.end():]).strip(" -—")
             m_salle_inl = re.search(r'\s*[-–]\s*[Ss]alle\s*:\s*(.+?)(?=\s*[-–]|$)', title_block)
             if m_salle_inl:
