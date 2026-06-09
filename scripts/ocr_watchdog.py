@@ -232,9 +232,22 @@ Si aucune anomalie : réponds uniquement {{"anomalie": null}}
 with open(ANALYZED_FILE, "w") as f:
     f.write("\n".join(sorted(analyzed)) + "\n")
 
+# --- Lire la version de main.py ---
+version = "?"
+try:
+    with open(MAIN_PY, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r'^VERSION\s*=\s*["\']([^"\']+)["\']', line)
+            if m:
+                version = m.group(1)
+                break
+except Exception:
+    pass
+
 # --- Envoyer le résumé au site (Redis via API) ---
 run_summary = {
     "ts": int(datetime.datetime.utcnow().timestamp() * 1000),
+    "version": version,
     "analyzed": len(nouvelles),
     "anomalies": anomalies_run,
 }
