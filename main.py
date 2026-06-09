@@ -781,9 +781,12 @@ def save_token(exe_token: str):
 # ── API ───────────────────────────────────────────────────────────────────────
 def send_heartbeat(tok: str) -> dict:
     try:
-        r = requests.post(API_HEARTBEAT, json={"exeToken": tok, "version": VERSION}, timeout=5)
-        return r.json() if r.ok or r.status_code == 200 else {}
-    except Exception: return {}
+        r = requests.post(API_HEARTBEAT, json={"exeToken": tok, "version": VERSION}, timeout=15)
+        if not (r.ok or r.status_code == 200):
+            return {"_err": f"HTTP {r.status_code}"}
+        return r.json()
+    except Exception as e:
+        return {"_err": str(e)}
 
 def _pil_to_b64(pil_img: Image.Image) -> str:
     buf = io.BytesIO()
@@ -1003,6 +1006,8 @@ class Worker(threading.Thread):
                         threading.Thread(target=_do_self_update, args=(dl, self.on_log, self.on_notify), daemon=True).start()
                     self.running = False
                     return
+                if hb.get("_err"):
+                    self.on_log(f"⚠️ Heartbeat échoué : {hb['_err']}")
                 self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
             except Exception as e:
                 self.on_log(f"⚠️  Heartbeat erreur : {e}")
