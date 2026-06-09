@@ -82,6 +82,7 @@ parsing_section = "\n".join(parsing_lines) if parsing_lines else main_py_content
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 fixes_applied = []
+anomalies_run = []
 
 for ann in nouvelles:
     aid = ann["id"]
@@ -177,9 +178,11 @@ Si aucune anomalie : réponds uniquement {{"anomalie": null}}
 
         if result is None:
             print("Pas de JSON valide dans la réponse.")
+            anomalies_run.append({"id": aid, "description": "(réponse invalide)", "fixed": False})
         elif result.get("anomalie"):
             anomalie = result["anomalie"]
             print(f"Anomalie : {anomalie}")
+            anomalies_run.append({"id": aid, "description": anomalie[:120], "fixed": False})
             # Créer une GitHub Issue pour que Claude (VS Code) corrige proprement
             import subprocess
             screenshot_url = f"{SITE}/api/cours/screenshot/{aid}" if ann.get("hasScreenshot") else "(pas de screenshot)"
@@ -229,5 +232,24 @@ Si aucune anomalie : réponds uniquement {{"anomalie": null}}
 with open(ANALYZED_FILE, "w") as f:
     f.write("\n".join(sorted(analyzed)) + "\n")
 
-print("\nAnalyse terminée. Issues créées pour les anomalies détectées.")
+# --- Envoyer le résumé au site (Redis via API) ---
+run_summary = {
+    "ts": int(datetime.datetime.utcnow().timestamp() * 1000),
+    "analyzed": len(nouvelles),
+    "anomalies": anomalies_run,
+}
+try:
+    r = requests.post(
+        f"{SITE}/api/cours/watchdog-history",
+        json=run_summary,
+        timeout=10
+    )
+    if r.status_code == 200:
+        print("Résumé envoyé au site.")
+    else:
+        print(f"Erreur envoi résumé: {r.status_code}")
+except Exception as e:
+    print(f"Erreur envoi résumé: {e}")
+
+print("\nAnalyse terminée.")
 sys.exit(0)
