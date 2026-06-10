@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.46"
+VERSION = "1.5.47"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -327,7 +327,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Serre 2',                    ['serre 2', 'serre2']),
     ('Serre 3',                    ['serre 3', 'serre3']),
     ('Serre 4',                    ['serre 4', 'serre4']),
-    ('Salle DCFM (toilettes)',     ['dcfm', 'toilette']),
+    ('Salle DCFM (toilettes)',     ['dcfm', 'toilette', 'saile']),
     ('Salle Musique',              ['musique']),
     ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau', 'generaliete', 'classe generaliste', 'classe general', 'sat f general', '11 x club', '11x', 'x club']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
