@@ -383,7 +383,7 @@ _STOP = (
     r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b|secatr[a-z]*|[Aa]u\b|zito'
     # Tokens OCR parasites tout-caps en début d'auteur (STERIJ, BARJNOV, etc.)
     r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]*(?![a-zà-ü]))|[Vv][Oo][Nn]\b|[Bb]ataille\b'
-    r'|[Tt]h[eé]rianthrope|[Tt]h[eé]rianthrop|[Tt][Hh][ÉéEe][Rr][Ii][Aa][Nn][Tt][Hh][Rr][Oo][Pp][EeÉé][Ss]?'
+    r'|[Tt]h[eé]rianthropes?|[Tt]h[eé]rianthrop|[Tt][Hh][ÉéEe][Rr][Ii][Aa][Nn][Tt][Hh][Rr][Oo][Pp][EeÉé][Ss]?'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
@@ -473,6 +473,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bSERRFS\b', 'SERRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSIQYE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bÉLÈVFS\b', 'ÉLÈVES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bCIN[OQ][UY]I[EÈ]ME\b', 'CINQUIÈME', joined, flags=re.IGNORECASE)
+    # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-AMETITE → AMETITE)
+    joined = re.sub(r'\bft-', '', joined, flags=re.IGNORECASE)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
     joined = re.sub(
         r'\bJeu\b.*?(?:Graphismes\s+avanc[eé]s?|Graphismes|Affichage)\b.*',
@@ -542,8 +546,8 @@ def parse_announcement(text: str) -> dict | None:
         )
         if m_a:
             author = m_a.group(1).strip()
-            # Sécurité : retire les mots _STOP ou contractions tout-caps en fin de nom
-            author = re.sub(rf'\s+(?:{_STOP}|{_ALL_CAPS_CONTRACTION})$', '', author).strip()
+            # Sécurité : retire les mots _STOP, contractions tout-caps, ou tokens all-caps en fin de nom
+            author = re.sub(rf'\s+(?:{_STOP}|{_ALL_CAPS_CONTRACTION}|[A-ZÀ-Ü]{{3,}}(?![a-zà-ü]))$', '', author).strip()
             payload = payload[m_a.end():].strip()
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
