@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.65"
+VERSION = "1.5.66"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -739,6 +739,7 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\s+[a-z]\s+', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
         message = re.sub(r'\s+[a-z]$', '', message)          # en fin minuscule
         message = re.sub(r'\s+[A-Z](?:\s+[A-Z]\.?)?$', '', message)          # en fin majuscule isolée ou initiale + majuscule (ex: "Sat F.")
+        message = re.sub(r'\s+X(?:\s+|$)', ' ', message)    # artefact OCR : "X" isolée (V mal lu) au milieu ou fin
         # Retire les résidus d'année qui ont fui dans le message (ex: "X Eme Année" / "5ème Année")
         message = re.sub(_YEAR_RE, '', message, flags=re.IGNORECASE).strip(' -—,')
         # Retire les suffixes ordinaux orphelins en fin de message (ex: "Cours 2 Eme" → "Cours 2")
