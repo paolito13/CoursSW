@@ -7,6 +7,8 @@ import sys
 
 MAIN_PY = "CoursSW/main.py"
 
+SITE = "https://almanach-peh.vercel.app"
+
 issue_number = os.environ["ISSUE_NUMBER"]
 issue_title  = os.environ["ISSUE_TITLE"]
 issue_body   = os.environ["ISSUE_BODY"]
@@ -15,6 +17,10 @@ issue_body   = os.environ["ISSUE_BODY"]
 def extract_field(label, text):
     m = re.search(rf'\*\*{label}\*\*\s*:?\s*`?([^`\n]+)`?', text)
     return m.group(1).strip() if m else ""
+
+# Extraire l'announce ID
+m_aid = re.search(r'\*\*Annonce ID\s*\*\*\s*:?\s*`([^`]+)`', issue_body)
+announce_id = m_aid.group(1).strip() if m_aid else None
 
 author  = extract_field("Champs parsés.*?author",  issue_body) or extract_field("author", issue_body)
 room    = extract_field("room",    issue_body)
@@ -156,3 +162,12 @@ with open("fix_comment.txt", "w") as f:
 
 with open("new_version.txt", "w") as f:
     f.write(new_ver)
+
+# Marquer l'anomalie comme corrigée dans l'historique du site
+if announce_id:
+    try:
+        import requests as _req
+        r = _req.patch(f"{SITE}/api/cours/watchdog-history", json={"announceId": announce_id}, timeout=10)
+        print(f"Anomalie {announce_id} marquée corrigée : {r.status_code}")
+    except Exception as e:
+        print(f"Erreur marquage corrigé : {e}")
