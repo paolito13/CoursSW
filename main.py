@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.26"
+VERSION        = "1.5.27"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -322,17 +322,17 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
 _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
     ('Salle Potions',                  ['cms']),
-    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature']),
+    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye']),
     ('Serre 1',                    ['serre 1', 'serre1']),
     ('Serre 2',                    ['serre 2', 'serre2']),
     ('Serre 3',                    ['serre 3', 'serre3']),
     ('Serre 4',                    ['serre 4', 'serre4']),
     ('Salle DCFM (toilettes)',     ['dcfm', 'toilette']),
     ('Salle Musique',              ['musique']),
-    ('Salle Généraliste',          ['generaliste', 'general', 'generalist']),
+    ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
     ('Salle de Duel',              ['duel']),
-    ('Salle de Littérature',       ['litter', 'littera', 'litterature']),
+    ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature']),
     ("Salle d'Etude de golmue",    ['golmue', 'golmu', 'etude de golm', 'study']),
 ]
 
@@ -374,6 +374,8 @@ _STOP = (
     r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature'
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
+    r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
+    r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
@@ -448,6 +450,16 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bVRAM\s*:\s*[\d/\., ]+', '', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bIO\b', '10', joined)
     joined = re.sub(r'\bl0\b', '10', joined)
+    # Corrections typos OCR fréquentes sur les noms de salles et mots-clés
+    joined = re.sub(r'\bGENERAUSTE\b', 'GENERALISTE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bGENERALUSTE\b', 'GENERALISTE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMAGIWES\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMAGIQYE\b', 'MAGIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bHISIOIRES\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMUSQUE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bLITTERATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAUE\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAIE\b', 'SALLE', joined, flags=re.IGNORECASE)
     # Barre séparatrice FiveM → marqueur §SPLIT§ (pivot le plus fiable)
     joined = re.sub(r'[─━]{3,}', ' §SPLIT§ ', joined)
     joined = re.sub(r'-{5,}', ' §SPLIT§ ', joined)
@@ -606,7 +618,9 @@ def parse_announcement(text: str) -> dict | None:
                     last_y = year_hits[-1]
                     year = last_y.group(0).strip()
                     details_raw = (details_raw[:last_y.start()] + " " + details_raw[last_y.end():]).strip()
-                room, _ = _split_details(details_raw)
+                room_cand, _ = _split_details(details_raw)
+                # Si _split_details retourne un mot seul ambigu, tenter sur la string complète
+                room = _normalize_room(details_raw if len(room_cand.split()) <= 1 else room_cand)
             else:
                 title_block = payload
                 year_hits = list(re.finditer(_YEAR_RE, payload, re.IGNORECASE))
