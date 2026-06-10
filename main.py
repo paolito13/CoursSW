@@ -985,7 +985,7 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
             f'if exist "{old_dir}" rmdir /s /q "{old_dir}"\n'
             f'rmdir /s /q "{new_dir}" 2>nul\n'
             f'del "{zip_path}" 2>nul\n'
-            f'start "" "{exe_path}"\n'
+            f'start "" "{exe_path}" --updated\n'
             'del "%~f0"\n'
         )
         bat_path.write_text(bat, encoding='utf-8')
@@ -1079,7 +1079,9 @@ class Worker(threading.Thread):
 
     def _update_check_loop(self):
         """Vérifie les mises à jour GitHub toutes les 10 min pendant que l'exe tourne."""
-        time.sleep(600)
+        # Si on vient d'une mise à jour auto, attendre 30 min avant la prochaine vérif
+        initial_delay = 1800 if '--updated' in sys.argv else 600
+        time.sleep(initial_delay)
         while self.running:
             check_github_update(self.on_log, self.on_notify)
             time.sleep(600)
@@ -1262,12 +1264,16 @@ class App(tk.Tk):
             except Exception:
                 pass
 
-        # Vérification GitHub au démarrage (avant de lancer le worker)
-        threading.Thread(
-            target=check_github_update,
-            args=(lambda m: self.after(0, self._log, m), self._notify),
-            daemon=True
-        ).start()
+        # Vérification GitHub au démarrage — sauf si on vient d'une mise à jour auto
+        # (évite la boucle infinie quand le bot OCR pousse des versions en rafale)
+        if '--updated' not in sys.argv:
+            threading.Thread(
+                target=check_github_update,
+                args=(lambda m: self.after(0, self._log, m), self._notify),
+                daemon=True
+            ).start()
+        else:
+            self.after(0, self._log, f"✅ Mise à jour appliquée — v{VERSION} en cours d'exécution")
 
         tok = load_token()
         if tok:
