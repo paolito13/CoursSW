@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.29"
+VERSION        = "1.5.30"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1031,6 +1031,10 @@ class Worker(threading.Thread):
                     return
                 if hb.get("_err"):
                     self.on_log(f"⚠️ Heartbeat échoué : {hb['_err']}")
+                elif not hb.get("ok"):
+                    self.on_log(f"⚠️ Heartbeat refusé : {hb}")
+                else:
+                    self.on_log("💓 Heartbeat ok")
                 self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
             except Exception as e:
                 self.on_log(f"⚠️  Heartbeat erreur : {e}")
