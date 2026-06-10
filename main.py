@@ -933,10 +933,9 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
         exe_path    = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve()
         install_dir = exe_path.parent          # …/CourSW/
         parent_dir  = install_dir.parent       # …/  (là où le BAT vivra)
-        zip_path    = parent_dir / "CourSW_update.zip"
-        new_dir     = parent_dir / "CourSW_new"
-        old_dir     = parent_dir / "CourSW_old"
-        bat_path    = parent_dir / "update.bat"
+        zip_path    = install_dir / "CourSW_update.zip"
+        new_dir     = install_dir / "CourSW_new"
+        bat_path    = install_dir / "update.bat"
 
         on_log(f"📁 Dossier install : {install_dir}")
         on_log(f"📁 Dossier parent  : {parent_dir}")
@@ -977,12 +976,9 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
 
         bat = (
             '@echo off\n'
-            f'cd /d "{parent_dir}"\n'
-            'timeout /t 6 /nobreak > nul\n'
-            f'if exist "{old_dir}" rmdir /s /q "{old_dir}"\n'
-            f'rename "{install_dir}" "CourSW_old"\n'
-            f'move /y "{extracted}" "{install_dir}"\n'
-            f'if exist "{old_dir}" rmdir /s /q "{old_dir}"\n'
+            f'cd /d "{install_dir}"\n'
+            'timeout /t 4 /nobreak > nul\n'
+            f'robocopy "{extracted}" "{install_dir}" /E /IS /IT /IM /NFL /NDL /NJH /NJS\n'
             f'rmdir /s /q "{new_dir}" 2>nul\n'
             f'del "{zip_path}" 2>nul\n'
             f'start "" "{exe_path}" --updated\n'
