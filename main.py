@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.56"
+VERSION = "1.5.57"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -383,7 +383,7 @@ _STOP = (
     r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b|secatr[a-z]*|[Aa]u\b'
     # Tokens OCR parasites tout-caps en début d'auteur (STERIJ, BARJNOV, etc.)
     r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]*(?![a-zà-ü]))|[Bb]ataille\b'
-    r'|[Tt]h[eé]rianthrope|[Tt]h[eé]rianthrop'
+    r'|[Tt]h[eé]rianthrope|[Tt]h[eé]rianthrop|[Tt][Hh][ÉéEe][Rr][Ii][Aa][Nn][Tt][Hh][Rr][Oo][Pp][EeÉé][Ss]?'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
