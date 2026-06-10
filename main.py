@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.27"
+VERSION        = "1.5.28"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1026,9 +1026,17 @@ class Worker(threading.Thread):
             except Exception as e:
                 self.on_log(f"⚠️  Heartbeat erreur : {e}")
 
+    def _update_check_loop(self):
+        """Vérifie les mises à jour GitHub toutes les 10 min pendant que l'exe tourne."""
+        time.sleep(600)
+        while self.running:
+            check_github_update(self.on_log, self.on_notify)
+            time.sleep(600)
+
     def run(self):
         self.on_log("Démarrage de la surveillance…")
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        threading.Thread(target=self._update_check_loop, daemon=True).start()
         # Attend que le heartbeat initial soit traité
         time.sleep(2)
 
