@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.33"
+VERSION = "1.5.34"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -379,7 +379,7 @@ _STOP = (
     # Salles (évite que "Duel" soit capturé comme nom)
     r'|[Dd]uel\b|[Gg]eneraliste|[Gg]énéraliste|[Gg]eneralust'
     # Tokens d'années (VII, EME, ERE, ANNEE) qui saignent dans l'auteur
-    r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b'
+    r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b|secatr[a-z]*'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
