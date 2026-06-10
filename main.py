@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.78"
+VERSION = "1.5.79"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -331,7 +331,7 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
 # Salles officielles + leurs variantes OCR / abréviations
 _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
-    ('Salle Potions',                  ['cms', 'potion', 'potions', 'salle de potion', 'salle d\'etude', 'etude de golmue']),
+    ('Salle Potions',                  ['cms', 'potion', 'potions', 'salle de potion']),
     ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes']),
     ('Serre 1',                    ['serre 1', 'serre1', 'serre', 'serrfs']),
     ('Serre 2',                    ['serre 2', 'serre2']),
