@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.38"
+VERSION = "1.5.39"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -380,6 +380,8 @@ _STOP = (
     r'|[Dd]uel\b|[Gg]eneraliste|[Gg]énéraliste|[Gg]eneralust'
     # Tokens d'années (VII, EME, ERE, ANNEE) qui saignent dans l'auteur
     r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b|secatr[a-z]*'
+    # Tokens OCR parasites tout-caps en début d'auteur (STERIJ, BARJNOV, etc.)
+    r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]{2,}(?![a-zà-ü]))'
     # Tokens parasites tout-caps en début d'auteur (erreurs OCR : BARJNOV, STERIJ, etc.)
     r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]{2,}(?![a-zà-ü]))'
 )
