@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.42"
+VERSION = "1.5.43"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -349,7 +349,7 @@ def _normalize_room(raw: str) -> str:
 # Matières officielles + leurs variantes OCR / abréviations
 _SUBJECTS: list[tuple[str, list[str]]] = [
     ('Alchimie - Botanique', ['alchimie', 'botanique', 'alch']),
-    ('Sorts',                ['sort', 'sorts', 'magie']),
+    ('Sorts',                ['sort', 'sorts', 'magie', 'sai']),
     ('Potions',              ['potion', 'potions']),
     ('Histoire de la Magie', ['histoire', 'hdm', 'hmd', 'hist']),
     ('Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'triton', 'animaux', 'bestiaire']),
