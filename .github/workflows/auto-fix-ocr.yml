@@ -1,0 +1,65 @@
+name: Auto-fix OCR anomaly
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix:
+    if: github.event.label.name == 'ocr-anomaly'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          path: CoursSW
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Appliquer le fix OCR
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: python CoursSW/scripts/auto_fix_issue.py
+
+      - name: Valider la syntaxe Python
+        run: python -m py_compile CoursSW/main.py
+
+      - name: Commit et push si modifié
+        working-directory: CoursSW
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add main.py
+          if git diff --cached --quiet; then
+            echo "Aucune modification à commiter."
+          else
+            VER=$(cat ../new_version.txt 2>/dev/null || echo "?")
+            git commit -m "fix: auto-correction OCR issue #${{ github.event.issue.number }} → v${VER}"
+            git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git HEAD:main
+          fi
+
+      - name: Fermer l'issue avec commentaire
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          COMMENT=$(cat fix_comment.txt 2>/dev/null || echo "Traité automatiquement.")
+          gh issue comment ${{ github.event.issue.number }} \
+            --repo paolito13/CoursSW \
+            --body "$COMMENT"
+          gh issue close ${{ github.event.issue.number }} \
+            --repo paolito13/CoursSW
