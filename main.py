@@ -263,7 +263,12 @@ def _detect_popup_crop(pil_img: Image.Image) -> Image.Image:
     return pil_img
 
 
+_mss_instance = None
+
 def capture_region(rect):
+    global _mss_instance
+    if _mss_instance is None:
+        _mss_instance = mss.mss()
     wx, wy, wx2, wy2 = rect
     ww, wh = wx2 - wx, wy2 - wy
     region = {
@@ -272,9 +277,13 @@ def capture_region(rect):
         "width":  int(ww * CAP_RIGHT),
         "height": int(wh * CAP_BOTTOM),
     }
-    with mss.mss() as sct:
-        shot = sct.grab(region)
-        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    try:
+        shot = _mss_instance.grab(region)
+    except Exception:
+        # Recréer l'instance si elle est corrompue
+        _mss_instance = mss.mss()
+        shot = _mss_instance.grab(region)
+    img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
     return _detect_popup_crop(img)
 
 # ── Parsing OCR → annonce structurée ─────────────────────────────────────────
@@ -1238,6 +1247,9 @@ class App(tk.Tk):
         self.withdraw()
         self.overrideredirect(False)
 
+        # WS_EX_NOACTIVATE : empêche la fenêtre de voler le focus/la souris à FiveM
+        self.after(100, self._set_noactivate)
+
         self.worker: Worker | None = None
         self._build_ui()
         self._setup_tray()
@@ -1263,6 +1275,15 @@ class App(tk.Tk):
         else:
             self._show_window()
             self._ask_link()
+
+    def _set_noactivate(self):
+        """Applique WS_EX_NOACTIVATE pour ne jamais voler le focus à FiveM."""
+        try:
+            hwnd = self.winfo_id()
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+            ctypes.windll.user32.SetWindowLongW(hwnd, -20, style | 0x08000000)  # WS_EX_NOACTIVATE
+        except Exception:
+            pass
 
     def _build_ui(self):
         hdr = tk.Frame(self, bg=BG)
