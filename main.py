@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.69"
+VERSION = "1.5.70"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -586,7 +586,7 @@ def parse_announcement(text: str) -> dict | None:
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_raw = re.sub(r'^[Cc]ours\s+', '', title_raw).strip()
             # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
-            title_raw = re.sub(r'^(?:dans|de|du|d\'|des|en|la|le|les|au[x]?)\s+', '', title_raw, flags=re.IGNORECASE)
+            title_raw = re.sub(r'^(?:dans|de|du|d\'|des|en|la|le|les|au[x]?|sort)\s+', '', title_raw, flags=re.IGNORECASE)
             # "[Matière] : [Titre du cours]" (1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_raw, re.DOTALL)
             if m_col:
