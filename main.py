@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.40"
+VERSION = "1.5.41"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -382,8 +382,7 @@ _STOP = (
     r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b|secatr[a-z]*'
     # Tokens OCR parasites tout-caps en début d'auteur (STERIJ, BARJNOV, etc.)
     r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]{2,}(?![a-zà-ü]))'
-    # Tokens parasites tout-caps en début d'auteur (erreurs OCR : BARJNOV, STERIJ, etc.)
-    r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]{2,}(?![a-zà-ü]))'
+    r'|[Tt]h[eé]rianthrope|[Tt]h[eé]rianthrop'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
@@ -468,6 +467,11 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bLITTERATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAIE\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAILE\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAI\s+F\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSERRFS\b', 'SERRES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMUSIQYE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
     joined = re.sub(
         r'\bJeu\b.*?(?:Graphismes\s+avanc[eé]s?|Graphismes|Affichage)\b.*',
