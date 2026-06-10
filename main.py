@@ -1319,6 +1319,10 @@ class App(tk.Tk):
                   command=lambda: webbrowser.open(SITE_URL),
                   bg="#1a2e38", fg=BLUE, relief="flat", font=("Segoe UI", 9), padx=10, pady=5
                   ).pack(side="left", padx=(8, 0))
+        tk.Button(bf, text="🔄  Mises à jour",
+                  command=self._check_update_manual,
+                  bg="#1a2e38", fg=BLUE, relief="flat", font=("Segoe UI", 9), padx=10, pady=5
+                  ).pack(side="left", padx=(8, 0))
         tk.Button(bf, text="✕  Réduire",
                   command=self._hide_window,
                   bg="#1a2e38", fg="#6b8a9a", relief="flat", font=("Segoe UI", 9), padx=10, pady=5
@@ -1334,6 +1338,14 @@ class App(tk.Tk):
                        activebackground=BG, font=("Segoe UI", 9), bd=0
                        ).pack(side="left")
 
+    def _check_update_manual(self):
+        self._log("🔄 Recherche manuelle de mise à jour…")
+        threading.Thread(
+            target=check_github_update,
+            args=(lambda m: self.after(0, self._log, m), self._notify),
+            daemon=True
+        ).start()
+
     def _setup_tray(self):
         menu = pystray.Menu(
             pystray.MenuItem("📡 CourSW — Seven Wands", None, enabled=False),
@@ -1341,6 +1353,7 @@ class App(tk.Tk):
             pystray.MenuItem("Ouvrir", self._show_window, default=True),
             pystray.MenuItem("Ouvrir le site", lambda: webbrowser.open(SITE_URL)),
             pystray.MenuItem("Changer de compte", lambda: self.after(0, self._ask_link)),
+            pystray.MenuItem("Chercher les mises à jour", lambda: self.after(0, self._check_update_manual)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quitter", self._quit),
         )
