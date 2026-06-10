@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.31"
+VERSION        = "1.5.32"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -915,6 +915,8 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
         old_dir     = parent_dir / "CourSW_old"
         bat_path    = parent_dir / "update.bat"
 
+        on_log(f"📁 Dossier install : {install_dir}")
+        on_log(f"📁 Dossier parent  : {parent_dir}")
         on_log("⬇️  Téléchargement de la mise à jour…")
         _notify("🔄 Mise à jour CourSW", "Téléchargement en cours…")
 
@@ -1023,9 +1025,6 @@ class Worker(threading.Thread):
         if not hb.get("ok"):
             self.on_log("⚠️  Heartbeat refusé — token invalide ou site inaccessible")
         self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
-        # Affiche "(latest)" si la version est à jour
-        if hb.get("ok") and not hb.get("update_required"):
-            self.after(0, lambda: self.ver_var.set(f"v{VERSION} (latest)"))
         webbrowser.open(SITE_URL)
 
         while self.running:
