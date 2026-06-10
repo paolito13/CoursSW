@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.28"
+VERSION        = "1.5.29"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -329,7 +329,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Serre 4',                    ['serre 4', 'serre4']),
     ('Salle DCFM (toilettes)',     ['dcfm', 'toilette']),
     ('Salle Musique',              ['musique']),
-    ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau']),
+    ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau', 'generaliete', 'classe generaliste', 'classe general', 'sat f general']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
     ('Salle de Duel',              ['duel']),
     ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature']),
@@ -376,6 +376,10 @@ _STOP = (
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
     r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation'
+    # Salles (évite que "Duel" soit capturé comme nom)
+    r'|[Dd]uel\b|[Gg]eneraliste|[Gg]énéraliste|[Gg]eneralust'
+    # Tokens d'années (VII, EME, ERE, ANNEE) qui saignent dans l'auteur
+    r'|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b'
 )
 
 # Année : tolère les typos OCR, chiffres romains, et format "Année: 1er" (label avant chiffre)
@@ -460,6 +464,11 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bLITTERATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAIE\b', 'SALLE', joined, flags=re.IGNORECASE)
+    # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
+    joined = re.sub(
+        r'\bJeu\b.*?(?:Graphismes\s+avanc[eé]s?|Graphismes|Affichage)\b.*',
+        '', joined, flags=re.IGNORECASE | re.DOTALL
+    )
     # Barre séparatrice FiveM → marqueur §SPLIT§ (pivot le plus fiable)
     joined = re.sub(r'[─━]{3,}', ' §SPLIT§ ', joined)
     joined = re.sub(r'-{5,}', ' §SPLIT§ ', joined)
