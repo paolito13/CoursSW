@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.73"
+VERSION = "1.5.74"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -734,7 +734,6 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'^(?:hdm|hmd)\s+', '', message, flags=re.IGNORECASE)  # retire abréviation matière OCR
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
-        message = re.sub(r'^[a-z]\s+', '', message)          # en début : "g Alchimie" → "Alchimie"
         message = re.sub(r'^[a-z]\s+', '', message)          # artefact OCR : minuscule isolée début (émojis mal lus)
         message = re.sub(r'\s+[a-z]\s+', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
         message = re.sub(r'\s+[a-z]$', '', message)          # en fin minuscule
