@@ -122,6 +122,7 @@ API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
 API_ANNOUNCE   = f"{SITE_URL}/api/cours/announce"
 
 TOKEN_FILE         = Path(os.environ.get("APPDATA", ".")) / "CourSW" / "token.json"
+_BROWSER_FLAG_FILE = Path(os.environ.get("APPDATA", ".")) / "CourSW" / "_browser_opened.flag"
 CAPTURE_INTERVAL   = 1.0
 HEARTBEAT_INTERVAL = 30
 
@@ -1034,7 +1035,10 @@ class Worker(threading.Thread):
         if not hb.get("ok"):
             self.on_log("⚠️  Heartbeat refusé — token invalide ou site inaccessible")
         self.on_status("🟢 Connecté — surveillance active" if hb.get("ok") else "🔴 Impossible de joindre le site")
-        webbrowser.open(SITE_URL)
+        if not _BROWSER_FLAG_FILE.exists():
+            _BROWSER_FLAG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _BROWSER_FLAG_FILE.touch()
+            webbrowser.open(SITE_URL)
 
         while self.running:
             time.sleep(HEARTBEAT_INTERVAL)
@@ -1371,6 +1375,8 @@ class App(tk.Tk):
     def destroy(self):
         if self.worker: self.worker.stop()
         try: self.tray.stop()
+        except Exception: pass
+        try: _BROWSER_FLAG_FILE.unlink(missing_ok=True)
         except Exception: pass
         super().destroy()
 
