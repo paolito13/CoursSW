@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION        = "1.5.30"
+VERSION        = "1.5.31"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -918,11 +918,24 @@ def _do_self_update(download_url: str, on_log, on_notify=None):
         on_log("⬇️  Téléchargement de la mise à jour…")
         _notify("🔄 Mise à jour CourSW", "Téléchargement en cours…")
 
-        with requests.get(download_url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            with open(zip_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=65536):
-                    f.write(chunk)
+        for attempt in range(1, 4):
+            try:
+                with requests.get(download_url, stream=True, timeout=180) as r:
+                    r.raise_for_status()
+                    expected = int(r.headers.get('Content-Length', 0))
+                    received = 0
+                    with open(zip_path, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=65536):
+                            f.write(chunk)
+                            received += len(chunk)
+                if expected and received < expected:
+                    raise ValueError(f"Téléchargement incomplet ({received}/{expected} octets)")
+                break
+            except Exception as e:
+                on_log(f"⚠️  Tentative {attempt}/3 échouée : {e}")
+                if attempt == 3:
+                    raise
+                time.sleep(5)
 
         if zip_path.stat().st_size < 1_000_000:
             raise ValueError(f"ZIP trop petit ({zip_path.stat().st_size} o) — probablement bloqué par l'antivirus")
