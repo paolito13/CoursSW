@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.79"
+VERSION = "1.5.80"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -341,7 +341,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Salle Musique',              ['musique']),
     ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau', 'generaliete', 'classe generaliste', 'classe general', 'sat f general', '11 x club', '11x', 'x club', 'duel league', 'duel en groupe', 'capture de zone', 'saile generausie', 'saile generau', 'generausie', 'salle generauste', 'dans generauste', 'club serre', 'saile generausie dans', 'potions', 'potions serre', 'serre 1', 'eme annee']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
-    ('Salle de Duel',              ['duel', 'tolte', 'tour', 'tou-u-r', 'saue', 'salle', 'musiqye', 'ft-1palto', 'ft-1palt']),
+    ('Salle de Duel',              ['duel', 'tolte', 'tour', 'tou-u-r', 'saue', 'musiqye', 'ft-1palto', 'ft-1palt']),
     ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature']),
     ("Salle d'Etude de golmue",    ['golmue', 'golmu', 'etude de golm', 'study']),
 ]
@@ -381,7 +381,7 @@ _STOP = (
     r'|[Ss]orts?|[Pp]otions?|[Dd]ivers|[Cc]lubs?|[Hh][Dd][Mm]|[Aa]lchimie'
     r'|[Bb]otanique|[Aa]stronomie|[Tt]ransfiguration|[Mm][ée]tamorphose'
     r'|[Dd][ée]fense|[Dd]ivination|[Aa]rithmancie|[Ss]oins'
-    r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature|[Cc]learw(?:at)?\w*'
+    r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature|[Cc]learw(?:at)?\w*|[Ll]eague\b'
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
@@ -484,8 +484,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bÉLÈVFS\b', 'ÉLÈVES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bCIN[OQ][UY]I[EÈ]ME\b', 'CINQUIÈME', joined, flags=re.IGNORECASE)
-    # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-AMETITE → AMETITE)
-    joined = re.sub(r'\bft-', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bBOTANIQSJE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bBOIANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
+    joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
     joined = re.sub(
         r'\bJeu\b.*?(?:Graphismes\s+avanc[eé]s?|Graphismes|Affichage)\b.*',
@@ -557,6 +559,8 @@ def parse_announcement(text: str) -> dict | None:
             author = m_a.group(1).strip()
             # Sécurité : retire les mots _STOP, contractions tout-caps, ou tokens all-caps en fin de nom
             author = re.sub(rf'\s+(?:{_STOP}|{_ALL_CAPS_CONTRACTION}|[A-ZÀ-Ü]{{3,}}(?![a-zà-ü]))$', '', author).strip()
+            # Retire un stop word en tête d'auteur (ex: "Duel League" → "League", puis trop court → rejeté)
+            author = re.sub(rf'^(?:{_STOP})\s+', '', author).strip()
             payload = payload[m_a.end():].strip()
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
@@ -741,6 +745,8 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
         message = re.sub(r'^(?:hdm|hmd)\s+', '', message, flags=re.IGNORECASE)  # retire abréviation matière OCR
+        message = re.sub(r'^\d*[EÈeè][Mm][Ee]\s+[Aa]nn[eé][ée]?\s*[/\-]?\s*', '', message)  # #176 résidu "Eme Année" en tête
+        message = re.sub(r'^[Aa][Nn]\s+(?=[A-ZÀ-Ü])', '', message)  # #166 résidu ".AN X" → "X"
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
         message = re.sub(r'^[a-z]\s+', '', message)          # artefact OCR : minuscule isolée début (émojis mal lus)
