@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.80"
+VERSION = "1.5.81"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -486,6 +486,14 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bCIN[OQ][UY]I[EÈ]ME\b', 'CINQUIÈME', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOTANIQSJE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOIANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bTHÉORIWE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bPOIIONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bLIWIDES\b', 'LIQUIDES', joined, flags=re.IGNORECASE)
+    # Caractères parasites OCR (bullet •, point médian ·)
+    joined = re.sub(r'[•·]', '', joined)
+    # Overlays réseau : "Ping: 15ms", "7.170 HDM" (stat FPS avec séparateur milliers)
+    joined = re.sub(r'\bPing\s*:\s*\d+\s*ms\b', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\b\d{1,3}\.\d{3}\b', '', joined)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
     joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
@@ -561,6 +569,8 @@ def parse_announcement(text: str) -> dict | None:
             author = re.sub(rf'\s+(?:{_STOP}|{_ALL_CAPS_CONTRACTION}|[A-ZÀ-Ü]{{3,}}(?![a-zà-ü]))$', '', author).strip()
             # Retire un stop word en tête d'auteur (ex: "Duel League" → "League", puis trop court → rejeté)
             author = re.sub(rf'^(?:{_STOP})\s+', '', author).strip()
+            # Retire un suffixe parasite de type ".D" ou ".X" en fin de nom (OCR artefact)
+            author = re.sub(r'\.[A-ZÀ-Ü]$', '', author).strip()
             payload = payload[m_a.end():].strip()
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
