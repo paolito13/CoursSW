@@ -519,6 +519,14 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bMINUTE[A-Za-z]\(S\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLIWIDES\b', 'LIQUIDES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLIWIDES(?=[A-ZÀÈÙÉ])', 'LIQUIDES ', joined, flags=re.IGNORECASE)  # mot fusionné (ex: LIWIDESMAGIQYES)
+    # Format fusionné "(SALLE:XXXX)" → "SALLE XXXX" pour que _norm_tok puisse normaliser
+    joined = re.sub(r'\(SALLE\s*:\s*([A-ZÀ-Üa-zà-ü\s]+?)\)', r'SALLE \1', joined, flags=re.IGNORECASE)
+    # "ENFANTINE" comme alias d'année (cours pour 1ère-2ème)
+    joined = re.sub(r'\bENFANTINE\b', '1ère ANNÉE', joined, flags=re.IGNORECASE)
+    # "111" avant ANNÉE = OCR de "1ère" (le "ère" est perdu) → normaliser
+    joined = re.sub(r'\b111\s*(?=ANN[EÉÈ])', '1ère ', joined, flags=re.IGNORECASE)
+    # "CLUB-" ou "CLUB :" en préfixe de titre = activité parascolaire, pas une anomalie → retirer
+    joined = re.sub(r'\bCLUB\s*[-:]\s*', '', joined, flags=re.IGNORECASE)
     # Overlays FiveM résiduels : tokens GPU% / CPU% collés (ex: "650/6 GPU: 66%")
     joined = re.sub(r'\b\d+[/%]\d*\s*(?=GPU|CPU)', '', joined, flags=re.IGNORECASE)
     # Résidus artefacts OCR FiveM header (fiveM@ by Cfx.re…, "ps" ou "fps" isolés en nombre)

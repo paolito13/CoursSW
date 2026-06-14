@@ -67,7 +67,7 @@ anomalies_run = []
 # ═══════════════════════════════════════════════════════════════════════════════
 # COUCHE 1 : Détection hardcodée (rapide, sans IA)
 # ═══════════════════════════════════════════════════════════════════════════════
-PREPOSITIONS = r'^(?:de|du|d\'|des|en|la|le|les|au|aux|un|une|sur|par|avec|dans|pour|vers)\s'
+PREPOSITIONS = r'^(?:de|du|d\'|des|en|au|aux|sur|par|avec|dans|pour|vers)\s'  # articles (le/la/les/un/une) exclus : valides en début de titre
 KNOWN_ROOMS = [
     "salle", "etude", "golmu", "potions", "botanique", "serres", "astronomie",
     "transfiguration", "defense", "magie", "histoire", "arithmancie", "divination",
@@ -123,10 +123,11 @@ def hardcoded_anomalies(ann: dict) -> list[str]:
         # Lettre minuscule isolée parasite au milieu du message
         if re.search(r'(?<=[a-zà-üA-ZÀ-Ü])\s+[a-z]\s+(?=[A-ZÀ-Ü])', message):
             issues.append(f"message contient lettre isolée parasite : '{message[:80]}'")
-        # Majuscule ALL-CAPS résiduelle en milieu de message
-        if re.search(r'\b[A-ZÀ-Ü]{4,}\b', message):
-            m_caps = re.findall(r'\b[A-ZÀ-Ü]{4,}\b', message)
-            issues.append(f"message contient token(s) ALL-CAPS résiduel(s) : {m_caps}")
+        # Majuscule ALL-CAPS résiduelle — exclure les noms propres du jeu connus en majuscules
+        _CAPS_OK = {'DCFM', 'HDM', 'HMD', 'XP', 'PNJ', 'RDV', 'RP'}
+        caps_found = [w for w in re.findall(r'\b[A-ZÀ-Ü]{4,}\b', message) if w not in _CAPS_OK]
+        if caps_found:
+            issues.append(f"message contient token(s) ALL-CAPS résiduel(s) : {caps_found}")
         # Message trop court (< 4 chars) ou vide
         if len(message.strip()) < 4:
             issues.append(f"message trop court : '{message}'")
@@ -137,11 +138,11 @@ def hardcoded_anomalies(ann: dict) -> list[str]:
     # Room
     if room:
         room_lower = room.lower()
-        # Aucun mot-clé salle connu → salle possiblement incorrecte
-        if not any(kw in room_lower for kw in KNOWN_ROOMS):
+        # Aucun mot-clé salle connu → salle possiblement incorrecte (Serre N = valide)
+        if not any(kw in room_lower for kw in KNOWN_ROOMS) and not re.match(r'^serre\s*\d', room_lower):
             issues.append(f"room ne contient pas de mot-clé connu : '{room}'")
-        # Room contient des chiffres (OCR artefact)
-        if re.search(r'\d', room):
+        # Room contient des chiffres — sauf Serre 1/2/3/4 qui sont des salles valides
+        if re.search(r'\d', room) and not re.search(r'^Serre\s+\d$', room, re.IGNORECASE):
             issues.append(f"room contient des chiffres : '{room}'")
 
     # Year
