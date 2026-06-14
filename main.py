@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.83"
+VERSION = "1.5.82"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -495,8 +495,12 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bSAT\s*F[-\.]?\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r"\bSA['\s]+['\s]+F\b", 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSATJF\s*:', 'SALLE:', joined, flags=re.IGNORECASE)
-    joined = re.sub(r'\bSAI\s+1\s*Fr?\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAI\s+1\s*Fr?\.?\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAI\s*[\.]\s*IE\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSATIF\b', 'SALLE', joined, flags=re.IGNORECASE)  # SATIF: → SALLE
+    joined = re.sub(r'\bSERREI\b', 'SERRE I', joined, flags=re.IGNORECASE)  # SERREI → SERRE I = SERRE 1
+    joined = re.sub(r'\bBOTANIQFI\'?\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSALLECMS\b', 'SALLE CMS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSERRFS\b', 'SERRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSIQYE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
@@ -540,6 +544,14 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bPing\s*:\s*\d+\s*ms\b', '', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\b\d{1,3}\.\d{3}\b', '', joined)
     joined = re.sub(r'\b(?:HDM|HMD)\b', '', joined)  # abréviation timer FiveM (reste après suppression du nombre)
+    # Timestamp heure + compteur inscrits du popup FiveM (ex: "04:39 5/24 inscrits")
+    joined = re.sub(r'\b\d{1,2}:\d{2}\b', '', joined)
+    joined = re.sub(r'\b\d+/\d+\s*inscrits?\b', '', joined, flags=re.IGNORECASE)
+    # Header "fiveM@ by Cfx.re - Sevenwands FA - Le seul et l'unique Xs" → strip tout avant ANNONCE
+    joined = re.sub(r'^.*?(?=ANNONCE\s+DE\s+COURS)', '', joined, flags=re.IGNORECASE | re.DOTALL)
+    # "Xs" timer en secondes avant ANNONCE (ex: "29 s ANNONCE") → déjà géré par le strip ci-dessus
+    # Format DIVERS(COURS DE X) → extraire X comme titre
+    joined = re.sub(r'\bDIVERS\s*\(COURS\s+DE\s+([^)]+)\)', r'\1', joined, flags=re.IGNORECASE)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
     joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
@@ -582,6 +594,15 @@ def parse_announcement(text: str) -> dict | None:
         def _norm_tok(w: str) -> str:
             if len(w) <= 1:
                 return w
+            # Apostrophe : normalise chaque partie (D'OPHIDREL → D'Ophidrel)
+            if "'" in w or '’' in w:
+                sep = "'" if "'" in w else '’'
+                parts = w.split(sep, 1)
+                return sep.join(_norm_tok(p) if p else p for p in parts)
+            # Parenthèse/point : split et normalise chaque fragment (ÉTOILÉE(ALCHIMIE → Étoilée(Alchimie)
+            m_fused = re.match(r'^([A-ZÀ-Üa-zà-ü\-]{2,})([\(\)\.\,\:])([A-ZÀ-Ü]{2,}.*)$', w)
+            if m_fused:
+                return _norm_tok(m_fused.group(1)) + m_fused.group(2) + _norm_tok(m_fused.group(3))
             if '.' in w:
                 parts = w.split('.')
                 return '.'.join(
