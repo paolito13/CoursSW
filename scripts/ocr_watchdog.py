@@ -39,6 +39,44 @@ except Exception as e:
 
 print(f"Total annonces: {len(announcements)}")
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SYNC issues GitHub fermées → marquer anomalies comme corrigées dans Redis
+# ═══════════════════════════════════════════════════════════════════════════════
+print("\nSync issues fermées…")
+try:
+    result_gh = subprocess.run(
+        ["gh", "issue", "list",
+         "--repo", "paolito13/CoursSW",
+         "--label", "ocr-anomaly",
+         "--state", "closed",
+         "--limit", "50",
+         "--json", "body"],
+        capture_output=True, text=True
+    )
+    if result_gh.returncode == 0:
+        closed_issues = json.loads(result_gh.stdout)
+        fixed_count = 0
+        for issue in closed_issues:
+            body = issue.get("body", "")
+            m = re.search(r'\*\*Annonce ID.*?`([a-f0-9]{16})`', body)
+            if m:
+                aid = m.group(1)
+                try:
+                    patch_r = requests.patch(
+                        f"{SITE}/api/cours/watchdog-history",
+                        json={"announceId": aid},
+                        timeout=10
+                    )
+                    if patch_r.status_code == 200 and patch_r.json().get("updated"):
+                        fixed_count += 1
+                except Exception:
+                    pass
+        print(f"  {fixed_count} anomalie(s) marquée(s) comme corrigée(s).")
+    else:
+        print(f"  Erreur gh: {result_gh.stderr[:100]}")
+except Exception as e:
+    print(f"  Erreur sync: {e}")
+
 nouvelles = [
     a for a in announcements
     if a.get("type") == "cours"
