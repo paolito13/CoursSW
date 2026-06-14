@@ -332,12 +332,12 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
 _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
     ('Salle Potions',                  ['cms', 'potion', 'potions', 'salle de potion']),
-    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes']),
+    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes', 'maciqje', 'macqje', 'macawe', 'macawes', 'magi(uje', 'magiqje', 'mac,jqje', 'macte']),
     ('Serre 1',                    ['serre 1', 'serre1', 'serre', 'serrfs']),
     ('Serre 2',                    ['serre 2', 'serre2']),
     ('Serre 3',                    ['serre 3', 'serre3']),
     ('Serre 4',                    ['serre 4', 'serre4']),
-    ('Salle DCFM (toilettes)',     ['dcfm', 'toilette', 'saile']),
+    ('Salle DCFM (toilettes)',     ['dcfm', 'ocfm', 'toilette', 'saile']),
     ('Salle Musique',              ['musique']),
     ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau', 'generaliete', 'classe generaliste', 'classe general', 'sat f general', '11 x club', '11x', 'x club', 'duel league', 'duel en groupe', 'capture de zone', 'saile generausie', 'saile generau', 'generausie', 'salle generauste', 'dans generauste', 'club serre', 'saile generausie dans', 'potions', 'potions serre', 'serre 1', 'eme annee']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
@@ -470,15 +470,33 @@ def parse_announcement(text: str) -> dict | None:
     # Corrections typos OCR fréquentes sur les noms de salles et mots-clés
     joined = re.sub(r'\bGENERAUSTE\b', 'GENERALISTE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bGENERALUSTE\b', 'GENERALISTE', joined, flags=re.IGNORECASE)
+    # Variantes OCR de MAGIQUE/MAGIQUES : MAC,JQJE / MAC'Q!JE.S / MACAWES / MAGI(UJE / MAGIQJE / MACIQJE / MACQJE
     joined = re.sub(r'\bMAGIWES\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMAGIQYE\b', 'MAGIQUE', joined, flags=re.IGNORECASE)
-    joined = re.sub(r'\bHISIOIRES\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMAGIQJE[S]?\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMAGI\(UJE[S]?\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMAGIWES\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r"\bMAC[',\.\!\s]?[QJ][!\.\s]?[JU][E]?[\.S]?\b", 'MAGIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMACAWES\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMACIQJE[S]?\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMACQJE[S]?\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMACtE\b', 'MAGIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bHISIOIRES?\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bHISIOIRES?\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bHIST0IRES?\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSQUE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLITTERATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
+    # Variantes OCR de SALLE : SAUE / SAIE / SAILE / SAI F / SAT F / SAT F- / SAT F. / SA' 'F / SATJF / SAI 1 Fr / SAI.IE / SALIE
     joined = re.sub(r'\bSAUE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAIE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAILE\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSALIE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAI\s+F\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAT\s*F[-\.]?\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r"\bSA['\s]+['\s]+F\b", 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSATJF\s*:', 'SALLE:', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAI\s+1\s*Fr?\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAI\s*[\.]\s*IE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSERRFS\b', 'SERRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSIQYE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
@@ -486,10 +504,28 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bCIN[OQ][UY]I[EÈ]ME\b', 'CINQUIÈME', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOTANIQSJE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOIANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bBOTANIQVE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÉORIWE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bTHÃORIQVE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bPOIIONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bPOIiONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bv0TlO[,\.]?[Vv][Ss]?\b', 'POTIONS', joined, flags=re.IGNORECASE)  # "v0TlO,VS" → POTIONS
+    joined = re.sub(r'\bPOIION\b', 'POTION', joined, flags=re.IGNORECASE)
+    # Variantes OCR de MINUTE(S) : MINUTEtS) / MINUTECS) / MINUJE(S) / Minutecs
+    joined = re.sub(r'\bMINUTEtS\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMINUTECS\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMinutecs\)', 'Minutes', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMINUJE\(S\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMINUTE[A-Za-z]\(S\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLIWIDES\b', 'LIQUIDES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLIWIDES(?=[A-ZÀÈÙÉ])', 'LIQUIDES ', joined, flags=re.IGNORECASE)  # mot fusionné (ex: LIWIDESMAGIQYES)
+    # Overlays FiveM résiduels : tokens GPU% / CPU% collés (ex: "650/6 GPU: 66%")
+    joined = re.sub(r'\b\d+[/%]\d*\s*(?=GPU|CPU)', '', joined, flags=re.IGNORECASE)
+    # Résidus artefacts OCR FiveM header (fiveM@ by Cfx.re…, "ps" ou "fps" isolés en nombre)
+    joined = re.sub(r'\bfiveM@[^A-ZÀ-Ü]*(?=ANNONCE)', '', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\b\d+\s*(?:fps|ps)\b', '', joined, flags=re.IGNORECASE)
+    # Artefact "cv.URs" (OCR de l'emoji cours) avant PAR
+    joined = re.sub(r'\bcv\.URs?\b', '', joined, flags=re.IGNORECASE)
     # Caractères parasites OCR (bullet •, point médian ·)
     joined = re.sub(r'[•·]', '', joined)
     # Overlays réseau : "Ping: 15ms", "7.170 HDM" (stat FPS avec séparateur milliers)
@@ -573,6 +609,22 @@ def parse_announcement(text: str) -> dict | None:
             author = re.sub(rf'^(?:{_STOP})\s+', '', author).strip()
             # Retire un suffixe parasite de type ".D" ou ".X" en fin de nom (OCR artefact)
             author = re.sub(r'\.[A-ZÀ-Ü]$', '', author).strip()
+            # Retire les suffixes numériques parasites (ex: "Paolito 7*10" → "Paolito")
+            author = re.sub(r'\s+[\d\*\+\/\-\.]+\s*\S*$', '', author).strip()
+            # Validation auteur : rejette les noms ALL-CAPS avec tiret interne (ex: "Mu-IER", "Oreg-L")
+            # Un nom valide a au moins une lettre minuscule (après normalisation Title Case)
+            # On rejette aussi les noms de 1 seul mot trop courts (< 3 chars)
+            _author_words = author.split()
+            if _author_words:
+                # Vérifie si le nom ressemble à un artefact OCR ALL-CAPS avec tiret
+                # Ex: "Mu-IER" → contient tiret + séquence ALL-CAPS après
+                _has_allcaps_hyphen = any(
+                    re.search(r'[A-ZÀ-Ü]-[A-ZÀ-Ü]{2,}', w) for w in _author_words
+                )
+                # Ex: "MYERS" reste ALL-CAPS après _norm_tok (si l'OCR n'a pas reconnu les minuscules)
+                _all_upper = all(w.isupper() and len(w) >= 2 for w in _author_words if len(w) > 1)
+                if _has_allcaps_hyphen or (_all_upper and len(_author_words) <= 2 and sum(len(w) for w in _author_words) < 8):
+                    author = ""
             payload = payload[m_a.end():].strip()
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
@@ -779,6 +831,13 @@ def parse_announcement(text: str) -> dict | None:
         # Retrait des artefacts OCR : espaces/chiffres orphelins
         message = re.sub(r'\s+\d\s+\d(?=\s|$)', '', message)
         message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
+        # Retire les tokens ALL-CAPS résiduels isolés (fragments de salle/année mal nettoyés)
+        # ex: "botaniqve" → déjà normalisé, mais "SATJF", "HISIOIRES", "zrro", "Sai.IE" qui resteraient
+        message = re.sub(r'\b(?:zrro|rro|ov|cv)\b', '', message, flags=re.IGNORECASE)
+        # Résidus de salle OCR en fin de message (ex: "Sat F- Serre" / "Sai 1 Fr CrÃ©atures")
+        message = re.sub(r'\s+(?:Sat|Sai|Sau)\s*[F\-\.]+.*$', '', message, flags=re.IGNORECASE)
+        # Résidus d'overlay FiveM (stats numériques résiduels après nettoyage FPS/GPU)
+        message = re.sub(r'\b\d{2,3}[/%]\d*\b', '', message)
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Rejette faux positifs OCR
