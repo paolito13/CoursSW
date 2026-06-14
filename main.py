@@ -1,4 +1,4 @@
-"""
+﻿"""
 CourSW.exe — Observateur d'annonces FiveM pour Seven Wands
 Détecte automatiquement FiveM, capture les annonces, les envoie au site.
 Compatible Windows 10/11. Aucune installation manuelle requise.
@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.81"
+VERSION = "1.5.82"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
