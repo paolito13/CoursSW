@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.82"
+VERSION = "1.5.84"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -468,8 +468,8 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bIO\b', '10', joined)
     joined = re.sub(r'\bl0\b', '10', joined)
     # Corrections typos OCR fréquentes sur les noms de salles et mots-clés
-    joined = re.sub(r'\bGENERAUSTE\b', 'GENERALISTE', joined, flags=re.IGNORECASE)
-    joined = re.sub(r'\bGENERALUSTE\b', 'GENERALISTE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bGENERAUSTE\b', 'GÉNÉRALISTE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bGENERALUSTE\b', 'GÉNÉRALISTE', joined, flags=re.IGNORECASE)
     # Variantes OCR de MAGIQUE/MAGIQUES : MAC,JQJE / MAC'Q!JE.S / MACAWES / MAGI(UJE / MAGIQJE / MACIQJE / MACQJE
     joined = re.sub(r'\bMAGIWES\b', 'MAGIQUES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMAGIQYE\b', 'MAGIQUE', joined, flags=re.IGNORECASE)
@@ -484,9 +484,13 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bHISIOIRES?\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bHISIOIRES?\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bHIST0IRES?\b', 'HISTOIRES', joined, flags=re.IGNORECASE)
+    joined = re.sub(r"HISI['’]OIRES", 'HISTOIRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSQUE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLITTERATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
     # Variantes OCR de SALLE : SAUE / SAIE / SAILE / SAI F / SAT F / SAT F- / SAT F. / SA' 'F / SATJF / SAI 1 Fr / SAI.IE / SALIE
+    joined = re.sub(r"SALLE O'ETUDE", "SALLE D'ETUDE", joined, flags=re.IGNORECASE)
+    joined = re.sub(r"SAI\s+1\s+E(?=D')", 'SALLE ', joined, flags=re.IGNORECASE)
+    joined = re.sub(r"ED'ETUDEDEGOLMUE", "D'ETUDE DE GOLMUE", joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAIE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAILE\b', 'SALLE', joined, flags=re.IGNORECASE)
@@ -552,6 +556,12 @@ def parse_announcement(text: str) -> dict | None:
     # "Xs" timer en secondes avant ANNONCE (ex: "29 s ANNONCE") → déjà géré par le strip ci-dessus
     # Format DIVERS(COURS DE X) → extraire X comme titre
     joined = re.sub(r'\bDIVERS\s*\(COURS\s+DE\s+([^)]+)\)', r'\1', joined, flags=re.IGNORECASE)
+    # "PL : CPU: XX/Y GPU: XX/Y" (overlay FiveM) -> supprimer
+    joined = re.sub(r'\bPL\s*:\s*CPU:\s*[\d/%]+\s*GPU:\s*[\d/%]+', '', joined, flags=re.IGNORECASE)
+    # Bouton fermer FiveM "X" isole avant DANS -> supprimer
+    joined = re.sub(r'\s+X\s+(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
+    # Tronquer apres DANS X MINUTE(S): supprime bas popup FiveM + 2eme annonce visible
+    joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
     joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
@@ -600,7 +610,7 @@ def parse_announcement(text: str) -> dict | None:
                 parts = w.split(sep, 1)
                 return sep.join(_norm_tok(p) if p else p for p in parts)
             # Parenthèse/point : split et normalise chaque fragment (ÉTOILÉE(ALCHIMIE → Étoilée(Alchimie)
-            m_fused = re.match(r'^([A-ZÀ-Üa-zà-ü\-]{2,})([\(\)\.\,\:])([A-ZÀ-Ü]{2,}.*)$', w)
+            m_fused = re.match(r'^([A-ZÀ-Üa-zà-ü\-]{2,})([\(\)\.\,\:])([A-ZÀ-Ü]{1,}.*)$', w)
             if m_fused:
                 return _norm_tok(m_fused.group(1)) + m_fused.group(2) + _norm_tok(m_fused.group(3))
             if '.' in w:
