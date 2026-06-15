@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.84"
+VERSION = "1.5.85"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -507,6 +507,11 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bSALLECMS\b', 'SALLE CMS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSERRFS\b', 'SERRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSIQYE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bBIBLIOTH[EÉ]QJE\b', 'BIBLIOTHÈQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bBIBLIOTH[EÉ]QYE\b', 'BIBLIOTHÈQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bOOLMUE\b', 'GOLMUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bETUDEDE\b', 'ETUDE DE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bLrr+f?RATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bÉLÈVFS\b', 'ÉLÈVES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bCIN[OQ][UY]I[EÈ]ME\b', 'CINQUIÈME', joined, flags=re.IGNORECASE)
@@ -560,6 +565,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bPL\s*:\s*CPU:\s*[\d/%]+\s*GPU:\s*[\d/%]+', '', joined, flags=re.IGNORECASE)
     # Bouton fermer FiveM "X" isole avant DANS -> supprimer
     joined = re.sub(r'\s+X\s+(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
+    # Icone "g" FiveM suivi des donnees popup (categorie + salle + X) avant DANS -> supprimer
+    joined = re.sub(r'\sg\s+.+?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE | re.DOTALL)
+    # Compteur inscrits sans barre (ex: "0130 iNSCiits") -> supprimer
+    joined = re.sub(r'\b\d{3,4}\s+i[Nn]sc[Ii]i?ts?\b', '', joined, flags=re.IGNORECASE)
     # Tronquer apres DANS X MINUTE(S): supprime bas popup FiveM + 2eme annonce visible
     joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
