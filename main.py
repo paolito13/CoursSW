@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.85"
+VERSION = "1.5.86"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -573,6 +573,8 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
     joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
+    # OCR fusionne parfois "NOM,PRENOM" avec une virgule (ex: "CLI,WALLEN" → "CLI WALLEN")
+    joined = re.sub(r'\b([A-ZÀ-Ü]{2,}),([A-ZÀ-Ü])', r'\1 \2', joined)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
     joined = re.sub(
         r'\bJeu\b.*?(?:Graphismes\s+avanc[eé]s?|Graphismes|Affichage)\b.*',
@@ -624,10 +626,15 @@ def parse_announcement(text: str) -> dict | None:
                 return _norm_tok(m_fused.group(1)) + m_fused.group(2) + _norm_tok(m_fused.group(3))
             if '.' in w:
                 parts = w.split('.')
-                return '.'.join(
-                    p.capitalize() if p and p.isupper() and re.fullmatch(r'[A-ZÀ-Üa-zà-ü\-]+', p) else p
-                    for p in parts
-                )
+                def _cap_part(p: str) -> str:
+                    if not p:
+                        return p
+                    # Gère les parties avec ponctuation autour ex: "(FLIPALTO)" ou "THÉORIQUE)"
+                    m2 = re.fullmatch(r'([^A-ZÀ-Üa-zà-ü]*)([A-ZÀ-Üa-zà-ü\-]{2,})([^A-ZÀ-Üa-zà-ü]*)', p)
+                    if m2 and m2.group(2).isupper():
+                        return m2.group(1) + m2.group(2).capitalize() + m2.group(3)
+                    return p
+                return '.'.join(_cap_part(p) for p in parts)
             # Normalise aussi les mots entre ponctuation ex: (FLAMETTE) → (Flamette)
             m = re.fullmatch(r'([^A-ZÀ-Üa-zà-ü]*)([A-ZÀ-Üa-zà-ü\-]{2,})([^A-ZÀ-Üa-zà-ü]*)', w)
             if m and m.group(2).isupper():
@@ -711,7 +718,7 @@ def parse_announcement(text: str) -> dict | None:
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_raw = re.sub(r'^[Cc]ours\s+', '', title_raw).strip()
             # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
-            title_raw = re.sub(r'^(?:dans|de|du|d\'|des|en|la|le|les|au[x]?|sort|pratiq[a-z_]*|nants?)\s+', '', title_raw, flags=re.IGNORECASE)
+            title_raw = re.sub(r'^(?:dans|de|du|d\'|des|en|la|le|les|au[x]?|pour|sort|pratiq[a-z_]*|nants?)\s+', '', title_raw, flags=re.IGNORECASE)
             # "[Matière] : [Titre du cours]" (1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_raw, re.DOTALL)
             if m_col:
@@ -814,7 +821,7 @@ def parse_announcement(text: str) -> dict | None:
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_block = re.sub(r'^[Cc]ours\s+', '', title_block).strip()
             # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
-            title_block = re.sub(r'^(?:de|du|d\'|des|en|la|le|les|au[x]?)\s+', '', title_block, flags=re.IGNORECASE)
+            title_block = re.sub(r'^(?:de|du|d\'|des|en|la|le|les|au[x]?|pour)\s+', '', title_block, flags=re.IGNORECASE)
 
             # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
@@ -878,9 +885,8 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(rf'\s*/\s*{re.escape(room)}.*$', '', message, flags=re.IGNORECASE) if room else message
         # Retrait des artefacts OCR : espaces/chiffres orphelins
         message = re.sub(r'\s+\d\s+\d(?=\s|$)', '', message)
-        message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par)\s*$', '', message, flags=re.IGNORECASE)
+        message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par|pour)\s*$', '', message, flags=re.IGNORECASE)
         # Retire les tokens ALL-CAPS résiduels isolés (fragments de salle/année mal nettoyés)
-        # ex: "botaniqve" → déjà normalisé, mais "SATJF", "HISIOIRES", "zrro", "Sai.IE" qui resteraient
         message = re.sub(r'\b(?:zrro|rro|ov|cv)\b', '', message, flags=re.IGNORECASE)
         # Résidus de salle OCR en fin de message (ex: "Sat F- Serre" / "Sai 1 Fr CrÃ©atures")
         message = re.sub(r'\s+(?:Sat|Sai|Sau)\s*[F\-\.]+.*$', '', message, flags=re.IGNORECASE)
