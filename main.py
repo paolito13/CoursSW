@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.87"
+VERSION = "1.5.88"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -356,7 +356,10 @@ def _normalize_room(raw: str) -> str:
     m = re.search(r'serre\s*(\d)', _deaccent(raw))
     if m:
         return f'Serre {m.group(1)}'
-    return _best_canonical(raw, _ROOMS)
+    # min_sim : une salle tronquée à un mot générique ("SALLE", "SERRE") sans
+    # qualificatif distinctif ne doit PAS être forcée vers une salle au hasard
+    # (ex: "SALLE" → "Salle de Duel"). Mieux vaut aucune salle qu'une fausse.
+    return _best_canonical(raw, _ROOMS, min_sim=0.42)
 
 
 # Matières officielles + leurs variantes OCR / abréviations
@@ -550,8 +553,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bENFANTINE\b', '1ère ANNÉE', joined, flags=re.IGNORECASE)
     # "111" avant ANNÉE = OCR de "1ère" (le "ère" est perdu) → normaliser
     joined = re.sub(r'\b111\s*(?=ANN[EÉÈ])', '1ère ', joined, flags=re.IGNORECASE)
-    # "CLUB-" ou "CLUB :" en préfixe de titre = activité parascolaire, pas une anomalie → retirer
-    joined = re.sub(r'\bCLUB\s*[-:]\s*', '', joined, flags=re.IGNORECASE)
+    # "CLUB-" ou "CLUB :" en préfixe de titre = activité parascolaire, pas une anomalie → retirer.
+    # MAIS pas quand "CLUB" suit "DE/DU" (ex: "COURS DE CLUB - COLLABORATION") : là "Club"
+    # est la matière du cours, pas un préfixe parasite → on le garde.
+    joined = re.sub(r'(?<!de\s)(?<!du\s)\bCLUB\s*[-:]\s*', '', joined, flags=re.IGNORECASE)
     # Overlays FiveM résiduels : tokens GPU% / CPU% collés (ex: "650/6 GPU: 66%")
     joined = re.sub(r'\b\d+[/%]\d*\s*(?=GPU|CPU)', '', joined, flags=re.IGNORECASE)
     # Résidus artefacts OCR FiveM header (fiveM@ by Cfx.re…, "ps" ou "fps" isolés en nombre)
@@ -568,6 +573,11 @@ def parse_announcement(text: str) -> dict | None:
     # Timestamp heure + compteur inscrits du popup FiveM (ex: "04:39 5/24 inscrits")
     joined = re.sub(r'\b\d{1,2}:\d{2}\b', '', joined)
     joined = re.sub(r'\b\d+/\d+\s*inscrits?\b', '', joined, flags=re.IGNORECASE)
+    # Année de la colonne gauche du popup ("11 TOUTES ANNÉES", "Xème ANNÉE") : elle
+    # apparaît AVANT "ANNONCE DE COURS" et serait perdue par le strip ci-dessous.
+    # On la capture maintenant pour la réinjecter en fallback plus loin.
+    _presrip_year_hits = list(re.finditer(_YEAR_RE, joined, re.IGNORECASE))
+    _presrip_header_year = _presrip_year_hits[0].group(0).strip() if _presrip_year_hits else ""
     # Header "fiveM@ by Cfx.re - Sevenwands FA - Le seul et l'unique Xs" → strip tout avant ANNONCE
     joined = re.sub(r'^.*?(?=ANNONCE\s+DE\s+COURS)', '', joined, flags=re.IGNORECASE | re.DOTALL)
     # "Xs" timer en secondes avant ANNONCE (ex: "29 s ANNONCE") → déjà géré par le strip ci-dessus
@@ -613,6 +623,9 @@ def parse_announcement(text: str) -> dict | None:
     # "ANNONCE DE COURS" (colonne gauche du popup) et serait perdue sinon
     _year_hits_full = list(re.finditer(_YEAR_RE, joined, re.IGNORECASE))
     _year_from_header = _year_hits_full[0].group(0).strip() if _year_hits_full else ""
+    # Fallback : année captée dans l'en-tête avant qu'il ne soit strippé (cf. _presrip_header_year)
+    if not _year_from_header and _presrip_header_year:
+        _year_from_header = _presrip_header_year
     # "ère Année" sans numéro (I perdu OCR) → "1ère Année"
     if _year_from_header and re.match(r'^[eèé]re?\s', _year_from_header, re.IGNORECASE):
         _year_from_header = '1' + _year_from_header
@@ -693,6 +706,12 @@ def parse_announcement(text: str) -> dict | None:
                 if _has_allcaps_hyphen or (_all_upper and len(_author_words) <= 2 and sum(len(w) for w in _author_words) < 8):
                     author = ""
             payload = payload[m_a.end():].strip()
+            # Résidu OCR d'un nom de famille cassé : auteur tronqué à une initiale seule
+            # (ex: "Klaus M") + fragment minuscule en tête de payload (ex: "yns" pour
+            # "Myers"). Le payload est en Title-Case, donc un token entièrement minuscule
+            # en tête est forcément un artefact OCR → on le retire.
+            if re.search(r'\b[A-ZÀ-Ü]$', author):
+                payload = re.sub(r'^[a-zà-üœæ]{2,5}\b\s+', '', payload)
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
 
