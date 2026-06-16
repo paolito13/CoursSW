@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.89"
+VERSION = "1.5.90"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -712,14 +712,12 @@ def parse_announcement(text: str) -> dict | None:
             # Résidu OCR d'un nom de famille cassé : auteur tronqué à une initiale seule
             # (ex: "Klaus M") + fragment minuscule en tête de payload (ex: "yns" pour
             # "Myers"). Le payload est en Title-Case, donc un token entièrement minuscule
-            # en tête est forcément un artefact OCR. On RECOLLE ce fragment à l'initiale
-            # isolée pour reconstruire un nom complet ("Klaus M"+"yns" → "Klaus Myns")
-            # plutôt que de laisser une initiale orpheline.
+            # en tête est forcément un artefact OCR. On le RETIRE (sans le recoller : un
+            # fragment OCR cassé "yns" donnerait un faux nom "Myns"). L'auteur reste à
+            # l'initiale propre "Klaus M" — l'annuaire serveur la complétera en "Klaus
+            # Myers" par match de préfixe sur l'historique des auteurs connus.
             if re.search(r'\s[A-ZÀ-Ü]$', author):
-                m_frag = re.match(r'^([a-zà-üœæ]{2,5})\b\s+', payload)
-                if m_frag:
-                    author = author + m_frag.group(1)
-                    payload = payload[m_frag.end():].lstrip()
+                payload = re.sub(r'^[a-zà-üœæ]{2,5}\b\s+', '', payload)
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
 
