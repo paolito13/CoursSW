@@ -166,6 +166,11 @@ def hardcoded_anomalies(ann: dict) -> list[str]:
         caps_found = [w for w in re.findall(r'\b[A-ZÀ-Ü]{4,}\b', message) if w not in _CAPS_OK]
         if caps_found:
             issues.append(f"message contient token(s) ALL-CAPS résiduel(s) : {caps_found}")
+        # Majuscules embarquées au milieu d'un mot (ex: "MyrHOLOGIE") — pas détecté par
+        # le pattern ci-dessus car il exige que le token ENTIER soit en majuscules
+        embedded_caps = re.findall(r'\b[a-zà-ü]{2,}[A-ZÀ-Ü]{3,}[a-zà-üA-ZÀ-Ü]*\b', message)
+        if embedded_caps:
+            issues.append(f"message contient majuscules embarquées au milieu d'un mot : {embedded_caps}")
         # Message trop court (< 4 chars) ou vide
         if len(message.strip()) < 4:
             issues.append(f"message trop court : '{message}'")
@@ -182,12 +187,24 @@ def hardcoded_anomalies(ann: dict) -> list[str]:
         # Room contient des chiffres — sauf Serre 1/2/3/4 qui sont des salles valides
         if re.search(r'\d', room) and not re.search(r'^Serre\s+\d$', room, re.IGNORECASE):
             issues.append(f"room contient des chiffres : '{room}'")
+    elif message and re.search(r'\b(?:salle|serre)\b', message, re.IGNORECASE):
+        # room vide mais un mot-clé salle/serre traîne encore dans le message
+        # → la salle n'a probablement pas été extraite correctement
+        issues.append(f"room manquant mais 'salle/serre' présent dans le message : '{message[:60]}'")
 
     # Year
     if year:
         # Format invalide
         if not re.search(r'\d|[IVX]+|toutes?', year, re.IGNORECASE):
             issues.append(f"year format inhabituel : '{year}'")
+    elif message and re.search(r'\b\d\s*(?:e|è|ème|eme|ère|iere)\s*ann[ée]e?s?\b', message, re.IGNORECASE):
+        # year vide mais un motif d'année traîne encore dans le message
+        issues.append(f"year manquant mais motif d'année présent dans le message : '{message[:60]}'")
+
+    # Delay — quasi toujours présent dans le template ANNONCE DE COURS ; son absence
+    # est un signal fort d'échec de parsing plutôt qu'un champ légitimement vide.
+    if not ann.get("delay") and ann.get("type") == "cours":
+        issues.append("delay manquant (devrait normalement être présent dans le template)")
 
     return issues
 
@@ -280,7 +297,17 @@ for ann in nouvelles:
     delay = ann.get("delay", "(vide)")
 
     prompt = f"""Tu es un vérificateur OCR pour des annonces de cours d'une école de magie FiveM (Seven Wands / Poudlard).
-Compare le texte OCR brut avec les champs parsés et identifie toute erreur de parsing.
+Tu as accès à TROIS sources : le screenshot original (image), le texte OCR brut, et les champs parsés.
+
+IMPORTANT — il y a deux familles d'erreurs distinctes à chercher, ne te limite pas à la première :
+1. Erreur de PARSING : le texte OCR brut est correct mais les champs extraits ne correspondent pas à ce texte.
+2. Erreur de LECTURE OCR : le texte OCR brut lui-même est déjà faux par rapport à ce qui est réellement écrit
+   sur le SCREENSHOT (mot mal lu, lettres déformées, mot tronqué/fusionné, salle/année illisible mal retranscrite).
+   Dans ce cas les champs parsés peuvent fidèlement refléter l'OCR brut et sembler "cohérents" alors que le
+   résultat final affiché sur le site est quand même faux — c'est CETTE catégorie qui passe le plus souvent
+   inaperçue, regarde bien l'image et pas seulement le texte OCR avant de conclure qu'il n'y a pas d'anomalie.
+
+Compare le texte OCR brut ET les champs parsés avec ce qui est visible sur le screenshot, et identifie toute erreur.
 
 **Champs parsés :**
 - author: {author}
