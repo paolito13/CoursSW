@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.88"
+VERSION = "1.5.89"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -539,6 +539,9 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bPOIiONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bv0TlO[,\.]?[Vv][Ss]?\b', 'POTIONS', joined, flags=re.IGNORECASE)  # "v0TlO,VS" → POTIONS
     joined = re.sub(r'\bPOIION\b', 'POTION', joined, flags=re.IGNORECASE)
+    # Variantes OCR de DANS (déclencheur du délai) : OANS/0ANS (D→O/0), DAN5/DANJ (S→5/J),
+    # DAMS (N→M) — uniquement quand suivi d'un nombre, pour éviter les faux positifs
+    joined = re.sub(r'\b[D0O]A[NM][S5J]\b(?=\s+\d)', 'DANS', joined, flags=re.IGNORECASE)
     # Variantes OCR de MINUTE(S) : MINUTEtS) / MINUTECS) / MINUJE(S) / Minutecs
     joined = re.sub(r'\bMINUTEtS\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMINUTECS\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
@@ -709,9 +712,14 @@ def parse_announcement(text: str) -> dict | None:
             # Résidu OCR d'un nom de famille cassé : auteur tronqué à une initiale seule
             # (ex: "Klaus M") + fragment minuscule en tête de payload (ex: "yns" pour
             # "Myers"). Le payload est en Title-Case, donc un token entièrement minuscule
-            # en tête est forcément un artefact OCR → on le retire.
-            if re.search(r'\b[A-ZÀ-Ü]$', author):
-                payload = re.sub(r'^[a-zà-üœæ]{2,5}\b\s+', '', payload)
+            # en tête est forcément un artefact OCR. On RECOLLE ce fragment à l'initiale
+            # isolée pour reconstruire un nom complet ("Klaus M"+"yns" → "Klaus Myns")
+            # plutôt que de laisser une initiale orpheline.
+            if re.search(r'\s[A-ZÀ-Ü]$', author):
+                m_frag = re.match(r'^([a-zà-üœæ]{2,5})\b\s+', payload)
+                if m_frag:
+                    author = author + m_frag.group(1)
+                    payload = payload[m_frag.end():].lstrip()
             # Retire les caractères non-alpha en début de payload (ex: ".A Hdm…" → "Hdm…")
             payload = re.sub(r'^[^a-zA-ZÀ-ÿ(]+', '', payload)
 
