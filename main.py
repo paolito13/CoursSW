@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.86"
+VERSION = "1.5.87"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -303,12 +303,13 @@ def _trigram_sim(a: str, b: str) -> float:
     if not ta or not tb:  return 0.0
     return len(ta & tb) / len(ta | tb)
 
-def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
+def _best_canonical(raw: str, table: list[tuple[str, list[str]]], min_sim: float = 0.0) -> str:
     """
-    Retourne TOUJOURS l'une des valeurs canoniques de la table.
     Étape 1 : correspondance par mots-clés.
     Étape 2 : similarité trigrammes sur le label normalisé.
-    Jamais de retour du texte OCR brut.
+    Si min_sim > 0 et qu'aucun mot-clé n'a matché et que la meilleure similarité
+    trigramme est sous le seuil, retourne "" (pas de correspondance fiable)
+    au lieu de forcer un label canonique arbitraire.
     """
     key = _deaccent(raw.strip())
     # Étape 1 — mots-clés
@@ -325,6 +326,8 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]]) -> str:
         sim = _trigram_sim(key, _deaccent(label))
         if sim > best_sim:
             best_label, best_sim = label, sim
+    if min_sim > 0 and best_sim < min_sim:
+        return ""
     return best_label
 
 
@@ -371,6 +374,14 @@ def _normalize_subject(raw: str) -> str:
     if not raw:
         return raw
     return _best_canonical(raw, _SUBJECTS)
+
+def _normalize_subject_strict(raw: str) -> str:
+    """Comme _normalize_subject, mais retourne "" si aucun mot-clé ne matche et
+    que la similarité trigramme est trop faible — pour ne pas confondre la fin
+    d'un titre de cours avec une matière au hasard (ex: "L'Austrel", "Des Brumes")."""
+    if not raw:
+        return raw
+    return _best_canonical(raw, _SUBJECTS, min_sim=0.42)
 
 
 # Mots qui signalent la fin du nom d'auteur
@@ -500,6 +511,7 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r"\bSA['\s]+['\s]+F\b", 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSATJF\s*:', 'SALLE:', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAI\s+1\s*Fr?\.?\b', 'SALLE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bSAT\s+1\s*F\.?\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAI\s*[\.]\s*IE\b', 'SALLE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSATIF\b', 'SALLE', joined, flags=re.IGNORECASE)  # SATIF: → SALLE
     joined = re.sub(r'\bSERREI\b', 'SERRE I', joined, flags=re.IGNORECASE)  # SERREI → SERRE I = SERRE 1
@@ -806,12 +818,19 @@ def parse_announcement(text: str) -> dict | None:
                     break
             else:
                 # Tentative fuzzy : les derniers 1-3 mots via trigram (tolère les typos OCR)
+                # Seuil strict requis : sinon la fin du titre du cours (ex: "L'Austrel",
+                # "Des Brumes") se fait quasi systématiquement confondre avec une matière.
                 words = title_block.split()
                 for n in (3, 2, 1):
                     if len(words) > n:
                         cand = ' '.join(words[-n:])
-                        norm = _normalize_subject(cand)
-                        if norm and norm.lower() != cand.lower():
+                        norm = _normalize_subject_strict(cand)
+                        # Un mot-clé isolé dans une fenêtre de 2-3 mots peut matcher même
+                        # quand le reste de la fenêtre est du vrai contenu de titre (ex:
+                        # "Magique : L'Austrel" contient "magique" mais n'est pas un écho de
+                        # matière) — on exige donc aussi une similarité globale candidat↔label.
+                        if norm and norm.lower() != cand.lower() and \
+                           _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.5:
                             trimmed = ' '.join(words[:-n]).strip(' -—,')
                             if len(trimmed) > 5:
                                 if not subject: subject = norm
