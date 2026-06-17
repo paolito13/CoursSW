@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.91"
+VERSION = "1.5.92"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -395,7 +395,7 @@ _STOP = (
     r'|[Ss]orts?|[Pp]otions?|[Dd]ivers|[Cc]lubs?|[Hh][Dd][Mm]|[Aa]lchimie'
     r'|[Bb]otanique|[Aa]stronomie|[Tt]ransfiguration|[Mm][ée]tamorphose'
     r'|[Dd][ée]fense|[Dd]ivination|[Aa]rithmancie|[Ss]oins'
-    r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature|[Cc]learw(?:at)?\w*|[Ll]eague\b'
+    r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature|[Ll]eague\b'
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
@@ -539,6 +539,14 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bPOIiONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bv0TlO[,\.]?[Vv][Ss]?\b', 'POTIONS', joined, flags=re.IGNORECASE)  # "v0TlO,VS" → POTIONS
     joined = re.sub(r'\bPOIION\b', 'POTION', joined, flags=re.IGNORECASE)
+    # OCR D→O fréquent quand l'annonce est lue tout en MAJUSCULES :
+    #   "OE" isolé = "DE", "OUEL" = "DUEL" (ex: "SALLE OE OUEL" → "SALLE DE DUEL")
+    joined = re.sub(r'\bOE\b', 'DE', joined)
+    joined = re.sub(r'\bOUEL\b', 'DUEL', joined, flags=re.IGNORECASE)
+    # "SORIS" = catégorie "SORTS" mal lue (écho de la matière dans le corps)
+    joined = re.sub(r'\bSORIS\b', 'SORTS', joined, flags=re.IGNORECASE)
+    # "i-ùVES" / "i-uVES" = "ÉLÈVES" (même famille de garble que ÉLÈVFS ci-dessus)
+    joined = re.sub(r'\bi-[ùu]VES\b', 'ÉLÈVES', joined, flags=re.IGNORECASE)
     # Variantes OCR de DANS (déclencheur du délai) : OANS/0ANS (D→O/0), DAN5/DANJ (S→5/J),
     # DAMS (N→M) — uniquement quand suivi d'un nombre, pour éviter les faux positifs
     joined = re.sub(r'\b[D0O]A[NM][S5J]\b(?=\s+\d)', 'DANS', joined, flags=re.IGNORECASE)
@@ -874,7 +882,11 @@ def parse_announcement(text: str) -> dict | None:
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_block = re.sub(r'^[Cc]ours\s+', '', title_block).strip()
             # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
-            title_block = re.sub(r'^(?:de|du|d\'|des|en|la|le|les|au[x]?|pour)\s+', '', title_block, flags=re.IGNORECASE)
+            title_block = re.sub(r'^(?:de|du|d\'|des|en|au[x]?|pour)\s+', '', title_block, flags=re.IGNORECASE)
+            # Articles (le/la/les) : retirés seulement sur un court fragment de titre,
+            # jamais sur une vraie phrase (ex: garder "Les élèves de 6e année sont attendus…")
+            if len(title_block.split()) <= 4:
+                title_block = re.sub(r'^(?:la|le|les)\s+', '', title_block, flags=re.IGNORECASE)
 
             # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
