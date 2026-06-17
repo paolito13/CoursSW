@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.90"
+VERSION = "1.5.91"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -565,6 +565,15 @@ def parse_announcement(text: str) -> dict | None:
     # Résidus artefacts OCR FiveM header (fiveM@ by Cfx.re…, "ps" ou "fps" isolés en nombre)
     joined = re.sub(r'\bfiveM@[^A-ZÀ-Ü]*(?=ANNONCE)', '', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\b\d+\s*(?:fps|ps)\b', '', joined, flags=re.IGNORECASE)
+    # Overlay "FPS: 237" / "FPS:- 237" / "FPS - 237" (label AVANT le nombre, avec ponctuation)
+    # — sinon le FPS se colle à "ERE ANNÉE" et devient une fausse année ("237 ERE ANNÉE")
+    joined = re.sub(r'\bFPS\s*[:\-]*\s*\d+', '', joined, flags=re.IGNORECASE)
+    # "Ping 15ms" sans deux-points (overlay réseau) → supprimer
+    joined = re.sub(r'\bPing\s*[:\-]*\s*\d+\s*ms\b', '', joined, flags=re.IGNORECASE)
+    # Token overlay CPU mal lu et isolé (ex: "CPI" pour "CPU:") au milieu du texte
+    joined = re.sub(r'\bCP[IU]\b(?!\s*:)', '', joined, flags=re.IGNORECASE)
+    # PRATIQYE → PRATIQUE (OCR Y→U), idem PRATIQVE
+    joined = re.sub(r'\bPRATIQ[YV]E\b', 'PRATIQUE', joined, flags=re.IGNORECASE)
     # Artefact "cv.URs" (OCR de l'emoji cours) avant PAR
     joined = re.sub(r'\bcv\.URs?\b', '', joined, flags=re.IGNORECASE)
     # Caractères parasites OCR (bullet •, point médian ·)
@@ -874,6 +883,11 @@ def parse_announcement(text: str) -> dict | None:
                 norm = _normalize_subject(potential)
                 if not subject and norm != potential:
                     subject = norm
+                    message = m_col.group(2).strip()
+                elif subject and norm and norm.lower() == subject.lower():
+                    # Le préfixe "[Matière] :" répète la matière déjà extraite ailleurs
+                    # (ex: "Potion : Nanis d'Humécume - Pratique" avec subject déjà = Potions)
+                    # → on retire seulement le préfixe, sans manger le titre du cours
                     message = m_col.group(2).strip()
                 else:
                     message = title_block
