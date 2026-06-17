@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.92"
+VERSION = "1.5.93"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -399,7 +399,7 @@ _STOP = (
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
-    r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation'
+    r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation|[Bb][aâ]timent|[Cc]ouloir|[Mm]onter'
     # Salles (évite que "Duel" soit capturé comme nom)
     r'|[Dd]uel\b|[Gg]eneraliste|[Gg]énéraliste|[Gg]eneralust'
     # Tokens d'années (VII, EME, ERE, ANNEE) qui saignent dans l'auteur
@@ -535,6 +535,7 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bBOTANIQVE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÉORIWE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÃORIQVE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bM[ÉEÃ]ORIQ[_\s]?[YVU]E\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)  # "mÉORIQ_YE" (T→m)
     joined = re.sub(r'\bPOIIONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bPOIiONS\b', 'POTIONS', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bv0TlO[,\.]?[Vv][Ss]?\b', 'POTIONS', joined, flags=re.IGNORECASE)  # "v0TlO,VS" → POTIONS
@@ -600,6 +601,11 @@ def parse_announcement(text: str) -> dict | None:
     _presrip_header_year = _presrip_year_hits[0].group(0).strip() if _presrip_year_hits else ""
     # Header "fiveM@ by Cfx.re - Sevenwands FA - Le seul et l'unique Xs" → strip tout avant ANNONCE
     joined = re.sub(r'^.*?(?=ANNONCE\s+DE\s+COURS)', '', joined, flags=re.IGNORECASE | re.DOTALL)
+    # Deux annonces empilées dans le même screenshot (ex: "… IMMÉDIATEMENT ANNONCE DE COURS PAR …")
+    # → on ne garde que la PREMIÈRE pour ne pas mélanger les deux cours dans un seul message.
+    _anns = list(re.finditer(r'ANNONCE\s+DE\s+COURS', joined, re.IGNORECASE))
+    if len(_anns) >= 2:
+        joined = joined[:_anns[1].start()].strip()
     # "Xs" timer en secondes avant ANNONCE (ex: "29 s ANNONCE") → déjà géré par le strip ci-dessus
     # Format DIVERS(COURS DE X) → extraire X comme titre
     joined = re.sub(r'\bDIVERS\s*\(COURS\s+DE\s+([^)]+)\)', r'\1', joined, flags=re.IGNORECASE)
@@ -607,6 +613,29 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bPL\s*:\s*CPU:\s*[\d/%]+\s*GPU:\s*[\d/%]+', '', joined, flags=re.IGNORECASE)
     # Bouton fermer FiveM "X" isole avant DANS -> supprimer
     joined = re.sub(r'\s+X\s+(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
+    # Section icône FiveM "g [MATIÈRE] SALLE [SALLE] [X]" (juste avant DANS/IMMÉDIATEMENT) :
+    # c'est l'étiquette du jeu elle-même → source LA PLUS FIABLE pour matière + salle.
+    # On la CAPTURE avant de la stripper, pour ne pas avoir à deviner depuis le corps
+    # (sinon un mot du corps comme "Émotions" se fait confondre avec une matière "Potions").
+    _icon_subject_raw, _icon_room_raw = "", ""
+    _m_icon_cap = re.search(
+        r'\sg\s+(.+?)(?=\s+DANS\b|\s+IMM[EÉ]DIATEMENT\b|$)',
+        joined, flags=re.IGNORECASE | re.DOTALL
+    )
+    if _m_icon_cap:
+        _seg = _m_icon_cap.group(1).strip()
+        _m_sr = re.search(r'(.*?)\bSA[LI]LE\b\s*(.*)', _seg, flags=re.IGNORECASE | re.DOTALL)
+        if _m_sr:
+            _icon_subject_raw = _m_sr.group(1)
+            _icon_room_raw = 'SALLE ' + _m_sr.group(2)
+        else:
+            _icon_subject_raw = _seg
+        # Nettoie les artefacts (croix de fermeture "X", "11", chiffres orphelins)
+        _icon_subject_raw = re.sub(r'\b(?:X|11|\d+)\b', ' ', _icon_subject_raw).strip()
+        _icon_room_raw = re.sub(r'\bX\b\s*$', '', _icon_room_raw).strip()
+    # Formes canoniques de l'icône (matière/salle) — autoritaires si reconnues
+    _icon_subject = _normalize_subject_strict(_icon_subject_raw) if _icon_subject_raw else ""
+    _icon_room = _normalize_room(_icon_room_raw) if _icon_room_raw else ""
     # Icone "g" FiveM suivi des donnees popup (categorie + salle + X) avant DANS -> supprimer
     joined = re.sub(r'\sg\s+.+?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE | re.DOTALL)
     # Compteur inscrits sans barre (ex: "0130 iNSCiits") -> supprimer
@@ -743,7 +772,10 @@ def parse_announcement(text: str) -> dict | None:
         year    = ""
         delay   = ""
         room    = ""
-        subject = ""
+        # La matière de l'icône (étiquette du jeu) est fiable : on la fixe DÈS LE DÉPART
+        # pour que le retrait du préfixe "[Matière] - …" du message s'appuie dessus
+        # (ex: "Créature Magique - Le Spectrevif" → "Le Spectrevif").
+        subject = _icon_subject
 
         # ── Format v2 : emojis structurés (📚 matière / 🏛 salle / ⌛ délai) ─
         # OCR Windows peut détecter ces emojis Unicode natifs
@@ -871,8 +903,14 @@ def parse_announcement(text: str) -> dict | None:
                         # quand le reste de la fenêtre est du vrai contenu de titre (ex:
                         # "Magique : L'Austrel" contient "magique" mais n'est pas un écho de
                         # matière) — on exige donc aussi une similarité globale candidat↔label.
-                        if norm and norm.lower() != cand.lower() and \
-                           _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.5:
+                        # Si l'icône donne déjà la matière, on ne coupe la fin du titre
+                        # que si elle correspond à CETTE matière (vrai écho) — sinon un mot
+                        # du titre (ex: "Émotions"≈"Potions", sim 0.5) serait coupé à tort.
+                        # Sans icône, seuil relevé à 0.6 (0.5 confondait émotions/potions).
+                        if norm and norm.lower() != cand.lower() and (
+                               (_icon_subject and norm.lower() == _icon_subject.lower()) or
+                               (not _icon_subject and
+                                _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.6)):
                             trimmed = ' '.join(words[:-n]).strip(' -—,')
                             if len(trimmed) > 5:
                                 if not subject: subject = norm
@@ -923,9 +961,21 @@ def parse_announcement(text: str) -> dict | None:
                         if norm2 and norm2.lower() == subject.lower():
                             message = m_dash2.group(2).strip()
 
+        # La section icône FiveM (étiquette du jeu) prime pour la matière et la salle :
+        # elle est explicite et fiable, contrairement à une devinette depuis le corps.
+        if _icon_subject:
+            subject = _icon_subject
+        if _icon_room:
+            room = _icon_room
+
         # Fallback : année extraite de l'en-tête (avant "ANNONCE DE COURS")
         if not year and _year_from_header:
             year = _year_from_header
+
+        # Normalisation finale : "Ere Année" (chiffre "1" perdu par l'OCR) → "1ère Année",
+        # quelle que soit la source (corps ou en-tête)
+        if year and re.match(r'^[eèé]re?\s+ann', _deaccent(year), re.IGNORECASE):
+            year = re.sub(r'^[eèé]re?', '1ère', year, count=1, flags=re.IGNORECASE)
 
         # Nettoie les fuites OCR dans le message :
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
@@ -960,8 +1010,34 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\b(?:zrro|rro|ov|cv)\b', '', message, flags=re.IGNORECASE)
         # Résidus de salle OCR en fin de message (ex: "Sat F- Serre" / "Sai 1 Fr CrÃ©atures")
         message = re.sub(r'\s+(?:Sat|Sai|Sau)\s*[F\-\.]+.*$', '', message, flags=re.IGNORECASE)
+        # Métadonnées du popup recopiées dans le message après un séparateur "/" :
+        # "… / Salle … / 18H20 | 25 Places" → on coupe à partir du 1er bloc méta
+        # (salle, horaire HHhMM/HHHMM, "N places").
+        message = re.sub(r'\s*[/|]\s*(?:sa[lit]\w*|sai\b|sat\b)\b.*$', '', message, flags=re.IGNORECASE)
+        message = re.sub(r'\s*[/|]?\s*\d{1,2}\s*[Hh]\s*\d{2}\b.*$', '', message)
+        message = re.sub(r'\s*[/|]\s*\d+\s*places?\b.*$', '', message, flags=re.IGNORECASE)
+        # "24 Places" sans séparateur (compteur de places du popup) → retirer
+        message = re.sub(r'\s+\d{1,3}\s*places?\b', '', message, flags=re.IGNORECASE)
+        # Résidu d'année sans chiffre en fin ("… Eme Année", "… Ere Année") → retirer
+        message = re.sub(r'\s+[eèé]m?e?\s+ann[eé]e?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
         # Résidus d'overlay FiveM (stats numériques résiduels après nettoyage FPS/GPU)
         message = re.sub(r'\b\d{2,3}[/%]\d*\b', '', message)
+        # Écho de la matière recopié en fin de message (ex: "… Couloir Histoires De La Magie",
+        # "… Méchant Loup) Histoires De La Magie 111 11") : on le retire si la fin du message,
+        # normalisée, redonne exactement la matière déjà extraite (vrai écho, pas un mot du titre).
+        if subject:
+            _mw = message.split()
+            while _mw and re.fullmatch(r'\d{1,3}', _mw[-1]):  # chiffres orphelins en fin d'abord
+                _mw.pop()
+            for _n in (2, 3, 4, 5):  # ordre croissant = écho minimal (ne mange pas un vrai mot du titre)
+                if len(_mw) > _n + 1:
+                    _tail = ' '.join(_mw[-_n:])
+                    if _normalize_subject_strict(_tail).lower() == subject.lower() and \
+                       _trigram_sim(_deaccent(_tail), _deaccent(subject)) >= 0.6:
+                        _mw = _mw[:-_n]
+                        break
+            message = ' '.join(_mw).strip(' -—,')
+        message = re.sub(r'\s*-\s*-+\s*', ' - ', message)  # double tiret OCR ("- -") → " - "
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Rejette faux positifs OCR
