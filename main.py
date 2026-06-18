@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.93"
+VERSION = "1.5.94"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -903,14 +903,13 @@ def parse_announcement(text: str) -> dict | None:
                         # quand le reste de la fenêtre est du vrai contenu de titre (ex:
                         # "Magique : L'Austrel" contient "magique" mais n'est pas un écho de
                         # matière) — on exige donc aussi une similarité globale candidat↔label.
-                        # Si l'icône donne déjà la matière, on ne coupe la fin du titre
-                        # que si elle correspond à CETTE matière (vrai écho) — sinon un mot
-                        # du titre (ex: "Émotions"≈"Potions", sim 0.5) serait coupé à tort.
-                        # Sans icône, seuil relevé à 0.6 (0.5 confondait émotions/potions).
-                        if norm and norm.lower() != cand.lower() and (
-                               (_icon_subject and norm.lower() == _icon_subject.lower()) or
-                               (not _icon_subject and
-                                _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.6)):
+                        # On exige TOUJOURS une forte similarité trigramme candidat↔matière :
+                        # un simple mot-clé partagé ne suffit pas (ex: "Sortilège" contient
+                        # "sort" mais n'est PAS la matière "Sorts" → sim 0.17, on ne coupe pas).
+                        # 0.6 sépare un vrai écho ("Histoires De La Magie"≈subject, ~0.85) d'un
+                        # mot de titre ("Émotions"≈"Potions" 0.5, "Sortilège…" 0.17).
+                        if norm and norm.lower() != cand.lower() and \
+                           _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.6:
                             trimmed = ' '.join(words[:-n]).strip(' -—,')
                             if len(trimmed) > 5:
                                 if not subject: subject = norm
@@ -977,6 +976,11 @@ def parse_announcement(text: str) -> dict | None:
         if year and re.match(r'^[eèé]re?\s+ann', _deaccent(year), re.IGNORECASE):
             year = re.sub(r'^[eèé]re?', '1ère', year, count=1, flags=re.IGNORECASE)
 
+        # Délai "IMMÉDIATEMENT" (le cours commence tout de suite, pas de "DANS X MINUTES") :
+        # c'est un délai valide affiché par le jeu → on le renseigne au lieu de le laisser vide.
+        if not delay and re.search(r'\bIMM[EÉ]DIATEMENT\b', text, re.IGNORECASE):
+            delay = "Immédiatement"
+
         # Nettoie les fuites OCR dans le message :
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)
@@ -1029,7 +1033,7 @@ def parse_announcement(text: str) -> dict | None:
             _mw = message.split()
             while _mw and re.fullmatch(r'\d{1,3}', _mw[-1]):  # chiffres orphelins en fin d'abord
                 _mw.pop()
-            for _n in (2, 3, 4, 5):  # ordre croissant = écho minimal (ne mange pas un vrai mot du titre)
+            for _n in (1, 2, 3, 4, 5):  # ordre croissant = écho minimal (ne mange pas un vrai mot du titre)
                 if len(_mw) > _n + 1:
                     _tail = ' '.join(_mw[-_n:])
                     if _normalize_subject_strict(_tail).lower() == subject.lower() and \
@@ -1038,6 +1042,16 @@ def parse_announcement(text: str) -> dict | None:
                         break
             message = ' '.join(_mw).strip(' -—,')
         message = re.sub(r'\s*-\s*-+\s*', ' - ', message)  # double tiret OCR ("- -") → " - "
+        # Template "EN [salle] SUR [titre]" (annonces type Leon Lonweack / Lydia Clarke) :
+        # quand le message DÉBUTE par une localisation ("En Sai…/En Salle…/En Cms…") suivie
+        # d'un "Sur …", le vrai contenu du cours est la partie "Sur …" — on retire le préfixe
+        # localisation. Ancré en tête : ne touche pas une vraie phrase ("Les élèves … sur le …").
+        _m_sur = re.match(
+            r'^En\s+(?:Sai|Sat|Sau|Salle|Serre|Cms|Dcfm|Duel)\b.*?\s+(Sur\s+.+)$',
+            message, re.IGNORECASE | re.DOTALL
+        )
+        if _m_sur:
+            message = _m_sur.group(1).strip()
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Rejette faux positifs OCR
