@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.96"
+VERSION = "1.5.97"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -504,6 +504,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bVRAM\s*:\s*[\d/\., ]+', '', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bIO\b', '10', joined)
     joined = re.sub(r'\bl0\b', '10', joined)
+    # Parenthèse fermante ")" au MILIEU d'un mot = artefact OCR (ex: "CALEIX)R" → "CALEIXR",
+    # "ASHWCX)D" → "ASHWCXD") — un vrai ")" est en fin de mot, jamais entre deux lettres.
+    # Évite que le nom d'auteur soit tronqué au ")" (ex: "Caleix" au lieu de "Caledor Mériastrel").
+    joined = re.sub(r'(?<=[A-Za-zÀ-ÿ])\)(?=[A-Za-zÀ-ÿ])', '', joined)
     # Corrections typos OCR fréquentes sur les noms de salles et mots-clés
     joined = re.sub(r'\bGENERAUSTE\b', 'GÉNÉRALISTE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bGENERALUSTE\b', 'GÉNÉRALISTE', joined, flags=re.IGNORECASE)
@@ -750,7 +754,10 @@ def parse_announcement(text: str) -> dict | None:
         # S'arrête aux abbréviations tout-caps (HDM, HMD…) et aux mots _STOP
         _NAME_TOK = r'(?:[A-ZÀ-Ü][A-ZÀ-Üa-zà-ü\'\-]+|[A-ZÀ-Ü]\.?(?=\s|$))'
         # Contractions tout-caps (C'EST, D'UNE…) → jamais un nom propre
-        _ALL_CAPS_CONTRACTION = r"[A-ZÀ-Ü]'[A-ZÀ-Ü]{2,}"
+        # Contraction/élision (C'EST, D'UNE, L'Histoire…) → jamais un nom propre. Couvre le
+        # tout-majuscules ET le Title-Case (le payload est déjà en casse mixte à ce stade,
+        # donc "C'Est" doit être reconnu comme stop, pas capturé dans l'auteur).
+        _ALL_CAPS_CONTRACTION = r"[A-ZÀ-Ü]['’][A-ZÀ-Üa-zà-ü]{2,}"
         _NAME_STOP = rf'(?:{_STOP}|[A-ZÀ-Ü]{{2,}}(?![a-zà-ü])|{_ALL_CAPS_CONTRACTION})'
         author = ""
         m_a = re.search(
