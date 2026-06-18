@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.94"
+VERSION = "1.5.95"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -638,6 +638,12 @@ def parse_announcement(text: str) -> dict | None:
     _icon_room = _normalize_room(_icon_room_raw) if _icon_room_raw else ""
     # Icone "g" FiveM suivi des donnees popup (categorie + salle + X) avant DANS -> supprimer
     joined = re.sub(r'\sg\s+.+?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE | re.DOTALL)
+    # Variante sans "DANS" : la section icône se termine par IMMÉDIATEMENT ou la fin de chaîne
+    # (sinon "g CRÉATURE MAGICUJE SALLE …" se recopiait en fin de message). On consomme aussi
+    # le terminateur IMMÉDIATEMENT (le délai est détecté séparément sur le texte d'origine).
+    joined = re.sub(r'\sg\s+.+?\bIMM[EÉ]DIATEMENT\b', ' ', joined, flags=re.IGNORECASE | re.DOTALL)
+    joined = re.sub(r'\sg\s+\S.*$', '', joined, flags=re.IGNORECASE | re.DOTALL)
+    joined = re.sub(r'\bIMM[EÉ]DIATEMENT\b', ' ', joined, flags=re.IGNORECASE)
     # Compteur inscrits sans barre (ex: "0130 iNSCiits") -> supprimer
     joined = re.sub(r'\b\d{3,4}\s+i[Nn]sc[Ii]i?ts?\b', '', joined, flags=re.IGNORECASE)
     # Tronquer apres DANS X MINUTE(S): supprime bas popup FiveM + 2eme annonce visible
@@ -926,8 +932,11 @@ def parse_announcement(text: str) -> dict | None:
                 title_block = re.sub(r'^(?:la|le|les)\s+', '', title_block, flags=re.IGNORECASE)
 
             # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
+            # Garde-fou : un VRAI préfixe de matière ne contient pas de " - " ; si la partie
+            # avant le ":" en contient un, le ":" est parasite (ex: "CA' \ F :" = "Salle :"
+            # mal lu dans "Le Fangor - CA' \ F : …") et on ne doit PAS couper avant le titre.
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
-            if m_col:
+            if m_col and ' - ' not in m_col.group(1) and '–' not in m_col.group(1):
                 potential = m_col.group(1).strip()
                 norm = _normalize_subject(potential)
                 if not subject and norm != potential:
@@ -942,6 +951,23 @@ def parse_announcement(text: str) -> dict | None:
                     message = title_block
             else:
                 message = title_block
+
+            # Préfixe matière en tête suivi d'une parenthèse ouvrante (titre parenthésé) :
+            # "Créature Magique (Les Dragons - Cours 1)" → "(Les Dragons - Cours 1)".
+            # On retire la matière redondante sans casser le tiret interne de la parenthèse.
+            if subject:
+                # k >= 2 : une matière est multi-mots ("Créature Magique") ; un mot simple
+                # comme "Sort" est du contenu de titre, pas l'étiquette matière — on le garde.
+                _mw0 = message.split()
+                for _k in (3, 2):
+                    if len(_mw0) > _k:
+                        _head = ' '.join(_mw0[:_k])
+                        _rest = message[len(_head):].lstrip()
+                        if _rest.startswith('(') and \
+                           _normalize_subject_strict(_head).lower() == subject.lower() and \
+                           _trigram_sim(_deaccent(_head), _deaccent(subject)) >= 0.5:
+                            message = _rest
+                            break
 
             # "[Matière] - [Titre du cours]" (format tiret — ex: "Divers - Les Mangas Golmu")
             # Si le sujet est déjà connu et que le message commence par "Sujet - ", retire ce préfixe
@@ -982,6 +1008,15 @@ def parse_announcement(text: str) -> dict | None:
             delay = "Immédiatement"
 
         # Nettoie les fuites OCR dans le message :
+        # Préfixe métadonnées "[année] : [salle] [matière]. [vrai message]" en tête
+        # (ex: "E Année : Sai 1 V Dcfm Créature Magique. Encore de la place") → on retire
+        # jusqu'au 1er point. Ancré sur un mot de salle (jamais un vrai début de message).
+        message = re.sub(
+            r'^[:\s]*(?:\d*\s*e?\s*ann[eé]e?\s*:?\s*)?(?:Sai|Sat|Sau|Salle|Cms|Dcfm)\b[^.]*\.\s*(?=[A-ZÀ-Ü])',
+            '', message, flags=re.IGNORECASE)
+        # Parenthèse ouvrante orpheline en tête suivie d'un tiret (préfixe retiré DANS la
+        # parenthèse, ex: "(HDM - Loups-garous … Loup)" → "Loups-garous … Loup")
+        message = re.sub(r'^\(\s*[-–]\s*', '', message)
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)
         # Résidu "initiale + Nom propre" en début (ex: "R Greenshadow Club…" → "Club…")
@@ -1014,6 +1049,13 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\b(?:zrro|rro|ov|cv)\b', '', message, flags=re.IGNORECASE)
         # Résidus de salle OCR en fin de message (ex: "Sat F- Serre" / "Sai 1 Fr CrÃ©atures")
         message = re.sub(r'\s+(?:Sat|Sai|Sau)\s*[F\-\.]+.*$', '', message, flags=re.IGNORECASE)
+        # Métadonnée salle recopiée APRÈS le titre, derrière un " - " (ex: "Le Fangor - CA' \\ F :
+        # Cheminée: Bibliothèque", "(Les Dragons - Cours 1) - Salle …") : on coupe au " - " dont
+        # le segment suivant contient un ":" ou un mot de salle. On ne touche pas un vrai titre à
+        # tiret interne ("Boucentête - Et Témoignage" : pas de ":" ni de salle après → conservé).
+        message = re.sub(
+            r'\s+[-–]\s+[^-–:]*(?::|(?:salle|sai|sat|sau|cms|dcfm|chemin|biblioth|toilett)\w*).*$',
+            '', message, flags=re.IGNORECASE)
         # Métadonnées du popup recopiées dans le message après un séparateur "/" :
         # "… / Salle … / 18H20 | 25 Places" → on coupe à partir du 1er bloc méta
         # (salle, horaire HHhMM/HHHMM, "N places").
@@ -1041,6 +1083,10 @@ def parse_announcement(text: str) -> dict | None:
                         _mw = _mw[:-_n]
                         break
             message = ' '.join(_mw).strip(' -—,')
+        message = re.sub(r'\s*[/|]\s*$', '', message)      # séparateur popup orphelin en fin ("Le Spectrevif /")
+        # Parenthèse fermante orpheline en fin (le "(" correspondant a été retiré) → on l'enlève
+        if message.count('(') < message.count(')'):
+            message = re.sub(r'\s*\)\s*$', '', message)
         message = re.sub(r'\s*-\s*-+\s*', ' - ', message)  # double tiret OCR ("- -") → " - "
         # Template "EN [salle] SUR [titre]" (annonces type Leon Lonweack / Lydia Clarke) :
         # quand le message DÉBUTE par une localisation ("En Sai…/En Salle…/En Cms…") suivie
@@ -1053,6 +1099,12 @@ def parse_announcement(text: str) -> dict | None:
         if _m_sur:
             message = _m_sur.group(1).strip()
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
+
+        # Fallback : certaines annonces n'ont PAS de titre de cours, juste la catégorie
+        # (ex: "Sorts" en Salle Généraliste). Si le nettoyage a tout retiré mais que la
+        # matière est connue, on l'affiche comme message plutôt que de jeter l'annonce.
+        if len(message) < 4 and subject:
+            message = subject
 
         # Rejette faux positifs OCR
         if len(author) < 3 or len(message) < 4:
