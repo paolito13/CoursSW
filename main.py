@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.95"
+VERSION = "1.5.96"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -463,6 +463,29 @@ def _split_details(details: str, wide: bool = False) -> tuple[str, str]:
         return _clean_noise(details[:m_subj.start()]), m_subj.group(1).strip()
 
     return details, ""
+
+
+def _smart_title(text: str) -> str:
+    """Title-case mot à mot un texte OCR tout-majuscules (auteur/message des annonces
+    génériques), en préservant la ponctuation autour et les apostrophes/tirets internes.
+    Ne touche pas les mots déjà en casse mixte (l'OCR a su lire la casse)."""
+    def _cap(w: str) -> str:
+        if len(w) <= 1:
+            return w
+        m = re.fullmatch(r'([^0-9A-Za-zÀ-ÿ]*)([0-9A-Za-zÀ-ÿ\'’\-]+)([^0-9A-Za-zÀ-ÿ]*)', w)
+        if not m:
+            return w
+        pre, core, post = m.group(1), m.group(2), m.group(3)
+        if not core.isupper():          # déjà en casse mixte → on garde
+            return w
+        for sep in ("'", "’", "-"):
+            if sep in core:
+                core = sep.join(p.capitalize() if p.isupper() else p for p in core.split(sep))
+                break
+        else:
+            core = core.capitalize()
+        return pre + core + post
+    return ' '.join(_cap(w) for w in text.split())
 
 
 def parse_announcement(text: str) -> dict | None:
@@ -1146,6 +1169,12 @@ def parse_announcement(text: str) -> dict | None:
                 raw_after = raw_after[m_a2.end():].strip()
 
         message = raw_after.strip(" -—,[]")
+
+        # Title-case (l'OCR rend l'annonce générique tout en MAJUSCULES) — cohérent avec
+        # le rendu des annonces de cours. "ADEL SINA" → "Adel Sina", "VERVENINI LES
+        # CANDIDATS …" → "Vervenini Les Candidats …".
+        author = _smart_title(author)
+        message = _smart_title(message)
 
         if not message:
             return None
