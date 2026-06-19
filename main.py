@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.107"
+VERSION = "1.5.108"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -352,7 +352,8 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]], min_sim: float
 # Salles officielles + leurs variantes OCR / abréviations
 _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
-    ('Salle Potions',                  ['cms', 'potion', 'potions', 'salle de potion']),
+    ('Salle CMS',                  ['cms']),   # le jeu affiche "Salle CMS" (≠ Salle Potions)
+    ('Salle Potions',                  ['potion', 'potions', 'salle de potion']),
     ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes', 'maciqje', 'macqje', 'macawe', 'macawes', 'magi(uje', 'magiqje', 'mac,jqje', 'macte']),
     ('Serre 1',                    ['serre 1', 'serre1', 'serre', 'serrfs']),
     ('Serre 2',                    ['serre 2', 'serre2']),
@@ -723,6 +724,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bIMM[EÉ]DIATEMENT\b', ' ', joined, flags=re.IGNORECASE)
     # Compteur inscrits sans barre (ex: "0130 iNSCiits") -> supprimer
     joined = re.sub(r'\b\d{3,4}\s+i[Nn]sc[Ii]i?ts?\b', '', joined, flags=re.IGNORECASE)
+    # Délai écrit DANS la phrase (ex: "… en salle du CMS dans 4 minutes sur Minotaure …") :
+    # un "DANS X MINUTES" suivi de "SUR/POUR" n'est pas le délai-délimiteur du popup mais une
+    # partie de la phrase → on le retire pour ne pas couper le vrai contenu à la troncature.
+    joined = re.sub(r'\bDANS\s+\d+\s+MINUTES?(?:\(S\))?\b(?=\s+(?:SUR|POUR)\b)', '', joined, flags=re.IGNORECASE)
     # Tronquer apres DANS X MINUTE(S): supprime bas popup FiveM + 2eme annonce visible
     joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
@@ -1018,11 +1023,13 @@ def parse_announcement(text: str) -> dict | None:
             title_block = re.sub(r'^(?:de|du|d\'|des|en|au[x]?|pour)\s+', '', title_block, flags=re.IGNORECASE)
 
             # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
-            # Garde-fou : un VRAI préfixe de matière ne contient pas de " - " ; si la partie
-            # avant le ":" en contient un, le ":" est parasite (ex: "CA' \ F :" = "Salle :"
-            # mal lu dans "Le Fangor - CA' \ F : …") et on ne doit PAS couper avant le titre.
+            # Garde-fou : un VRAI préfixe de matière ne contient ni " - " ni un marqueur de
+            # salle ; si la partie avant le ":" en contient un, le ":" est parasite (vient d'un
+            # "Salle :"/"Sai F :"/"CA' \ F :" mal lu) et on ne doit PAS couper avant le titre
+            # (ex: "Sort (Les Flammettes…) Salle : Littérature", "Le Fangor - CA' \ F : …").
             m_col = re.match(r'^([^:]{1,40}):\s*(.+)$', title_block, re.DOTALL)
-            if m_col and ' - ' not in m_col.group(1) and '–' not in m_col.group(1):
+            if m_col and ' - ' not in m_col.group(1) and '–' not in m_col.group(1) and \
+               not re.search(r'\b(?:salle|serre|sai|sat|sau|cms|dcfm)\b', m_col.group(1), re.IGNORECASE):
                 potential = m_col.group(1).strip()
                 norm = _normalize_subject(potential)
                 if not subject and norm != potential:
@@ -1153,6 +1160,10 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(
             r'\s+[-–]\s+[^-–:]*(?::|(?:salle|sai|sat|sau|cms|dcfm|chemin|biblioth|toilett)\w*).*$',
             '', message, flags=re.IGNORECASE)
+        # Métadonnée salle en fin sous forme "[Salle/Sai…] [qqch] : [pièce]" (ex: "… Maison)
+        # Salle : Littérature", "Sai F : Littérature"). Le ":" la distingue d'une phrase fluide
+        # ("… en salle de Duel pour …" n'a pas de ":" après "salle") → on la retire.
+        message = re.sub(r'\s+(?:Salle|Serre|Sai|Sat|Sau|Cms|Dcfm)\b[^:]{0,6}:\s*\S.*$', '', message, flags=re.IGNORECASE)
         # Format structuré "Titre | Salle X | 2e année | 13h10 | 25 places" (annonces type
         # Livio Lenfield). La présence d'un "|" signale ce bloc de métadonnées : on coupe le
         # message au 1er marqueur = le "|" OU le " Salle/Serre " le plus proche (la vraie salle
@@ -1213,6 +1224,7 @@ def parse_announcement(text: str) -> dict | None:
         # Résidu "- '" / "- :" en fin : tiret suivi seulement de ponctuation (vient d'un
         # "- Salle:" dont la salle a été retirée, le "Salle:" lu "'"). Ex: "(Le Tanuki) - '".
         message = re.sub(r"\s*[-–]\s*['’\"().,:;]*\s*$", '', message)
+        message = re.sub(r'\s*\(\s*\)\s*', ' ', message)   # parenthèses vides (contenu retiré, ex: "(HDM)" → "()")
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Fallback : le corps n'a pas produit de titre exploitable.
