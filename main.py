@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.101"
+VERSION = "1.5.102"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -912,9 +912,12 @@ def parse_announcement(text: str) -> dict | None:
                 delay = m_d.group(0)
                 payload = (payload[:m_d.start()] + payload[m_d.end():]).strip()
 
-            # Salle : pivot strict sur la DERNIÈRE occurrence
+            # Salle : pivot strict sur la DERNIÈRE occurrence du corps — MAIS seulement si
+            # l'icône n'a pas déjà donné la salle. Sinon un "salle" interne à la phrase
+            # ("… attendus EN SALLE DE Créature Magique POUR UN COURS SUR …") couperait le
+            # message à tort (la vraie salle vient de l'icône, le corps est la phrase complète).
             strict_hits = list(_STRICT_ROOM.finditer(payload))
-            if strict_hits:
+            if strict_hits and not _icon_room:
                 last_pivot = strict_hits[-1]
                 pre = payload[:last_pivot.start()].rstrip()
                 m_art = re.search(r'(?:La|Le|Les|Au[x]?|De|Du|L\')\s*$', pre, re.IGNORECASE)
