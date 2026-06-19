@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.97"
+VERSION = "1.5.98"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -590,8 +590,9 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\(SALLE\s*:\s*([A-ZÀ-Üa-zà-ü\s]+?)\)', r'SALLE \1', joined, flags=re.IGNORECASE)
     # "ENFANTINE" comme alias d'année (cours pour 1ère-2ème)
     joined = re.sub(r'\bENFANTINE\b', '1ère ANNÉE', joined, flags=re.IGNORECASE)
-    # "111" avant ANNÉE = OCR de "1ère" (le "ère" est perdu) → normaliser
-    joined = re.sub(r'\b111\s*(?=ANN[EÉÈ])', '1ère ', joined, flags=re.IGNORECASE)
+    # "111" avant ANNÉE = chiffre romain "III" (3ème année) mal lu — cohérent avec "11"=II=2ème
+    # ci-dessous. L'OCR perd souvent le "ÈME" : "III ÈME ANNÉE" → "111 ANNÉE" → "3ème année".
+    joined = re.sub(r'\b111\s*(?:[èeéÈ]me?\s*)?(?=ANN[EÉÈ])', '3ème ', joined, flags=re.IGNORECASE)
     # "CLUB-" ou "CLUB :" en préfixe de titre = activité parascolaire, pas une anomalie → retirer.
     # MAIS pas quand "CLUB" suit "DE/DU" (ex: "COURS DE CLUB - COLLABORATION") : là "Club"
     # est la matière du cours, pas un préfixe parasite → on le garde.
@@ -1009,10 +1010,13 @@ def parse_announcement(text: str) -> dict | None:
                 if m_dash:
                     message = m_dash.group(1).strip()
                 else:
-                    # Essai via _normalize_subject sur la partie avant " - "
+                    # Essai sur la partie avant " - ". On utilise la version STRICTE (avec
+                    # seuil) : un vrai préfixe matière matche par mot-clé, mais un fragment de
+                    # titre ("(Les Nocthraals") ne doit PAS être forcé vers une matière par
+                    # simple similarité trigramme — sinon le titre se fait couper à "Cours 2".
                     m_dash2 = re.match(r'^([^–\-]{1,40})\s*[-–]\s*(.+)$', message, re.DOTALL)
                     if m_dash2:
-                        norm2 = _normalize_subject(m_dash2.group(1).strip())
+                        norm2 = _normalize_subject_strict(m_dash2.group(1).strip())
                         if norm2 and norm2.lower() == subject.lower():
                             message = m_dash2.group(2).strip()
 
