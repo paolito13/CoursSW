@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.102"
+VERSION = "1.5.103"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -683,10 +683,11 @@ def parse_announcement(text: str) -> dict | None:
     )
     if _m_icon_cap:
         _seg = _m_icon_cap.group(1).strip()
-        _m_sr = re.search(r'(.*?)\bSA[LI]LE\b\s*(.*)', _seg, flags=re.IGNORECASE | re.DOTALL)
+        # La salle de l'icône commence à "SALLE" OU "SERRE" (les deux types de lieux).
+        _m_sr = re.search(r'(.*?)\b(SA[LI]LE|SERRE)\b\s*(.*)', _seg, flags=re.IGNORECASE | re.DOTALL)
         if _m_sr:
             _icon_subject_raw = _m_sr.group(1)
-            _icon_room_raw = 'SALLE ' + _m_sr.group(2)
+            _icon_room_raw = _m_sr.group(2) + ' ' + _m_sr.group(3)
         else:
             _icon_subject_raw = _seg
         # Nettoie les artefacts (croix de fermeture "X", "11", chiffres orphelins)
