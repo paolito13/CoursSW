@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.103"
+VERSION = "1.5.104"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -723,8 +723,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\s\.\s', ' ', joined)
     # OCR lit souvent "/" comme " I " dans les titres FiveM
     joined = re.sub(r'(?<=[A-Za-zÀ-ü0-9])\s+I\s+(?=[A-ZÀ-Üa-zà-ü0-9])', ' / ', joined)
-    # OCR fusionne "/ 3" en "13" (I+digit sans espace) → on restaure l'ordinal
-    joined = re.sub(r'\b1(\d\s*(?:[eèê]me?|[eè]re?|e)\b)', r'\1', joined)
+    # OCR fusionne "/ 3" en "13" (I+digit sans espace) → on restaure l'ordinal.
+    # [2-9] uniquement (pas "11" = II = 2ème, géré par la règle ci-dessous).
+    # IGNORECASE : "12E ANNÉE" en majuscules → "2E ANNÉE" = 2ème.
+    joined = re.sub(r'\b1([2-9]\s*(?:[eèê]me?|[eè]re?|e)\b)', r'\1', joined, flags=re.IGNORECASE)
     # OCR lit "II" (2ème année) comme "11" — corrige avant extraction d'année
     joined = re.sub(r'\b11\s*(?=[eèêéE]me?\b)', '2 ', joined, flags=re.IGNORECASE)
 
@@ -1126,6 +1128,16 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(
             r'\s+[-–]\s+[^-–:]*(?::|(?:salle|sai|sat|sau|cms|dcfm|chemin|biblioth|toilett)\w*).*$',
             '', message, flags=re.IGNORECASE)
+        # Format structuré "Titre | Salle X | 2e année | 13h10 | 25 places" (annonces type
+        # Livio Lenfield). La présence d'un "|" signale ce bloc de métadonnées : on coupe le
+        # message au 1er marqueur = le "|" OU le " Salle/Serre " le plus proche (la vraie salle
+        # vient de l'icône). Gardé derrière la présence d'un "|" pour ne pas toucher une phrase
+        # normale ("… en salle de Duel …" n'a pas de pipe).
+        if '|' in message:
+            _cut = re.search(r'\s*\|\s*|\s+(?=(?:Salle|Serre)\b)', message, flags=re.IGNORECASE)
+            if _cut and _cut.start() > 5:
+                message = message[:_cut.start()].rstrip(' -—,|')
+            message = re.sub(r'\s+\d{1,2}$', '', message)  # séparateur "1" orphelin laissé en fin
         # Métadonnées du popup recopiées dans le message après un séparateur "/" :
         # "… / Salle … / 18H20 | 25 Places" → on coupe à partir du 1er bloc méta
         # (salle, horaire HHhMM/HHHMM, "N places").
