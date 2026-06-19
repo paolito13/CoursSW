@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.98"
+VERSION = "1.5.99"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -560,6 +560,7 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bBOTANIQSJE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOIANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOTANIQVE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bBO[VT]ANIQ[VU]E\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)  # BOVANIQVE (T→V, U→V)
     joined = re.sub(r'\bTHÉORIWE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÃORIQVE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bM[ÉEÃ]ORIQ[_\s]?[YVU]E\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)  # "mÉORIQ_YE" (T→m)
