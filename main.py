@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.105"
+VERSION = "1.5.106"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -696,6 +696,23 @@ def parse_announcement(text: str) -> dict | None:
     # Formes canoniques de l'icône (matière/salle) — autoritaires si reconnues
     _icon_subject = _normalize_subject_strict(_icon_subject_raw) if _icon_subject_raw else ""
     _icon_room = _normalize_room(_icon_room_raw) if _icon_room_raw else ""
+    # Titre happé dans l'icône AVANT la matière (cas des titres entourés d'emojis 🎵 lus "g X",
+    # ex: "g X Club - Musique Club SALLE Musique" → segment matière = "Club - Musique Club" =
+    # [titre "Club - Musique"] + [matière "Club"]). Si le segment contient un tiret et finit par
+    # un mot qui EST la matière, on isole le titre — récupéré comme message si le corps est vide.
+    _icon_title_raw = ""
+    if _icon_subject and _icon_subject_raw:
+        _toks = _icon_subject_raw.split()
+        # On retire en fin le(s) token(s) qui redonnent la matière ; ce qui reste devant est
+        # un titre SEULEMENT s'il ne redonne pas lui-même la matière (ex: "Musique Club" →
+        # titre "Musique" + matière "Club" ; "Créature Magique" → tout est matière, pas de titre).
+        for _k in range(1, len(_toks)):
+            _tail = ' '.join(_toks[-_k:])
+            _head = ' '.join(_toks[:-_k])
+            if _normalize_subject_strict(_tail).lower() == _icon_subject.lower() and _head and \
+               _normalize_subject_strict(_head).lower() != _icon_subject.lower():
+                _icon_title_raw = _head
+                break
     # Icone "g" FiveM suivi des donnees popup (categorie + salle + X) avant DANS -> supprimer
     joined = re.sub(r'\sg\s+.+?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE | re.DOTALL)
     # Variante sans "DANS" : la section icône se termine par IMMÉDIATEMENT ou la fin de chaîne
@@ -1195,9 +1212,16 @@ def parse_announcement(text: str) -> dict | None:
             message = _m_sur.group(1).strip()
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
-        # Fallback : certaines annonces n'ont PAS de titre de cours, juste la catégorie
-        # (ex: "Sorts" en Salle Généraliste). Si le nettoyage a tout retiré mais que la
-        # matière est connue, on l'affiche comme message plutôt que de jeter l'annonce.
+        # Fallback : le corps n'a pas produit de titre exploitable.
+        # 1) Si le titre avait été happé dans l'icône (ex: "Club - Musique"), on l'utilise,
+        #    en retirant le préfixe matière redondant ("Club - Musique" → "Musique").
+        # 2) Sinon, à défaut, on affiche la catégorie (ex: "Sorts" en Salle Généraliste)
+        #    plutôt que de jeter l'annonce.
+        if len(message) < 4 and _icon_title_raw:
+            _t = _smart_title(_icon_title_raw)
+            _t = re.sub(r'^[^-–]{1,30}[-–]\s*', '', _t).strip()  # retire "Matière - "
+            if len(_t) >= 3:
+                message = _t
         if len(message) < 4 and subject:
             message = subject
 
