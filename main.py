@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.104"
+VERSION = "1.5.105"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1111,6 +1111,14 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\s+[eèêé]m[eé]?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
         # Nettoie les doubles virgules laissées par le retrait de l'année (ex: ", , En" → ", En")
         message = re.sub(r',\s*,+', ',', message)
+        # Ponctuation orpheline laissée par le retrait de l'année entre deux points
+        # (ex: "Sort (Invertum). 3eme années. En …" → "(Invertum). . En …" → "(Invertum). En …")
+        message = re.sub(r'\.\s*\.+', '.', message)
+        # Format descriptif "Cours de X, Yème années, en salle de Z" : la mention de salle/serre
+        # EN FIN de message (précédée d'une ponctuation) est redondante avec le tag salle → on la
+        # retire. Ancré sur "[.,] en salle/serre …$" : ne touche pas une phrase ("… attendus en
+        # salle de Duel pour …" n'a pas de ponctuation avant "en salle").
+        message = re.sub(r'\s*[.,]\s*[Ee]n\s+(?:salle|serre)\b[\w\s\'’-]*$', '', message, flags=re.IGNORECASE)
         # Retire les prépositions isolées en fin de message (ex: "Sort (Luridium), En" → "Sort (Luridium)")
         # Ajouter avant le nettoyage final : retrait de la salle si elle fuit dans le message
         message = re.sub(rf'\s*/\s*{re.escape(room)}.*$', '', message, flags=re.IGNORECASE) if room else message
