@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.100"
+VERSION = "1.5.101"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -303,6 +303,24 @@ def _trigram_sim(a: str, b: str) -> float:
     if not ta or not tb:  return 0.0
     return len(ta & tb) / len(ta | tb)
 
+def _lev(a: str, b: str) -> int:
+    """Distance d'édition (Levenshtein) — meilleure que les trigrammes pour une
+    déformation OCR d'1-2 lettres au milieu d'un mot (ex: 'magicuje' vs 'magiques')."""
+    m, n = len(a), len(b)
+    d = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev, d[0] = d[0], i
+        for j in range(1, n + 1):
+            cur = d[j]
+            d[j] = prev if a[i - 1] == b[j - 1] else 1 + min(prev, d[j], d[j - 1])
+            prev = cur
+    return d[n]
+
+def _lev_ratio(a: str, b: str) -> float:
+    """Distance d'édition normalisée [0..1] : 0 = identiques, ~1 = totalement différents."""
+    m = max(len(a), len(b))
+    return _lev(a, b) / m if m else 0.0
+
 def _best_canonical(raw: str, table: list[tuple[str, list[str]]], min_sim: float = 0.0) -> str:
     """
     Étape 1 : correspondance par mots-clés.
@@ -385,6 +403,18 @@ def _normalize_subject_strict(raw: str) -> str:
     if not raw:
         return raw
     return _best_canonical(raw, _SUBJECTS, min_sim=0.42)
+
+def _subject_has_keyword(text: str, label: str) -> bool:
+    """Vrai si `text` contient un mot-clé OFFICIEL de la matière `label` (match par
+    sous-chaîne, comme _best_canonical). Sert à distinguer un vrai écho de matière
+    ("Créature Magicuje" contient le mot-clé 'creature') d'une simple ressemblance
+    trompeuse ("Émotions" ne contient AUCUN mot-clé de Potions, il ne matchait que
+    par trigramme)."""
+    key = _deaccent(text).lower()
+    for lab, kws in _SUBJECTS:
+        if lab == label:
+            return any(kw in key for kw in kws)
+    return False
 
 
 # Mots qui signalent la fin du nom d'auteur
@@ -941,13 +971,16 @@ def parse_announcement(text: str) -> dict | None:
                         # quand le reste de la fenêtre est du vrai contenu de titre (ex:
                         # "Magique : L'Austrel" contient "magique" mais n'est pas un écho de
                         # matière) — on exige donc aussi une similarité globale candidat↔label.
-                        # On exige TOUJOURS une forte similarité trigramme candidat↔matière :
-                        # un simple mot-clé partagé ne suffit pas (ex: "Sortilège" contient
-                        # "sort" mais n'est PAS la matière "Sorts" → sim 0.17, on ne coupe pas).
-                        # 0.6 sépare un vrai écho ("Histoires De La Magie"≈subject, ~0.85) d'un
-                        # mot de titre ("Émotions"≈"Potions" 0.5, "Sortilège…" 0.17).
-                        if norm and norm.lower() != cand.lower() and \
-                           _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.6:
+                        # Vrai écho si : trigramme fort (≥0.6) OU bien le candidat contient un
+                        # MOT-CLÉ officiel de la matière ET en est très proche (édition ≤0.4).
+                        # La 2e voie attrape les échos très garblés ("Créature Magicuje"≈
+                        # "Créatures Magiques", édition 0.22, mot-clé 'creature') ; le mot-clé
+                        # évite le faux positif "Émotions"→"Potions" (aucun mot-clé, juste un
+                        # trigramme trompeur), et "Sortilège…"→"Sorts" reste écarté (édition 0.76).
+                        if norm and norm.lower() != cand.lower() and (
+                               _trigram_sim(_deaccent(cand), _deaccent(norm)) >= 0.6 or
+                               (_subject_has_keyword(cand, norm) and
+                                _lev_ratio(_deaccent(cand).lower(), _deaccent(norm).lower()) <= 0.4)):
                             trimmed = ' '.join(words[:-n]).strip(' -—,')
                             if len(trimmed) > 5:
                                 if not subject: subject = norm
@@ -956,12 +989,10 @@ def parse_announcement(text: str) -> dict | None:
 
             # Retire le "Cours " initial redondant avec "ANNONCE DE COURS"
             title_block = re.sub(r'^[Cc]ours\s+', '', title_block).strip()
-            # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…")
+            # Retire la préposition initiale résiduelle (ex: "de Sort…" → "Sort…").
+            # On NE retire PAS les articles le/la/les : ils font presque toujours partie du
+            # vrai titre ("Le Fangor", "La Biche Des Brumes", "Les Thérianthropes", "Les Mangas").
             title_block = re.sub(r'^(?:de|du|d\'|des|en|au[x]?|pour)\s+', '', title_block, flags=re.IGNORECASE)
-            # Articles (le/la/les) : retirés seulement sur un court fragment de titre,
-            # jamais sur une vraie phrase (ex: garder "Les élèves de 6e année sont attendus…")
-            if len(title_block.split()) <= 4:
-                title_block = re.sub(r'^(?:la|le|les)\s+', '', title_block, flags=re.IGNORECASE)
 
             # "[Matière] : [Titre du cours]" (format colon — 1er screenshot)
             # Garde-fou : un VRAI préfixe de matière ne contient pas de " - " ; si la partie
@@ -1113,8 +1144,13 @@ def parse_announcement(text: str) -> dict | None:
             for _n in (1, 2, 3, 4, 5):  # ordre croissant = écho minimal (ne mange pas un vrai mot du titre)
                 if len(_mw) > _n + 1:
                     _tail = ' '.join(_mw[-_n:])
-                    if _normalize_subject_strict(_tail).lower() == subject.lower() and \
-                       _trigram_sim(_deaccent(_tail), _deaccent(subject)) >= 0.6:
+                    # Vrai écho si la fin, normalisée, redonne la matière ET reste proche
+                    # (trigrammes ≥0.6 OU distance d'édition ≤0.4 — la 2e attrape les échos très
+                    # garblés "Créature Magicuje"≈"Créatures Magiques", ratio 0.22 ; sans laisser
+                    # passer un vrai mot de titre "Sortilège…"≈"Sorts", ratio 0.76).
+                    if _normalize_subject_strict(_tail).lower() == subject.lower() and (
+                           _trigram_sim(_deaccent(_tail), _deaccent(subject)) >= 0.6 or
+                           _lev_ratio(_deaccent(_tail).lower(), _deaccent(subject).lower()) <= 0.4):
                         _mw = _mw[:-_n]
                         break
             message = ' '.join(_mw).strip(' -—,')
