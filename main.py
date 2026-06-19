@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.106"
+VERSION = "1.5.107"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1141,7 +1141,7 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(rf'\s*/\s*{re.escape(room)}.*$', '', message, flags=re.IGNORECASE) if room else message
         # Retrait des artefacts OCR : espaces/chiffres orphelins
         message = re.sub(r'\s+\d\s+\d(?=\s|$)', '', message)
-        message = re.sub(r'(?:,\s*)?(?:en|de|du|au[x]?|la|le|les|sur|par|pour)\s*$', '', message, flags=re.IGNORECASE)
+        message = re.sub(r'(?:,\s*)?\b(?:en|de|du|au[x]?|la|le|les|sur|par|pour)\s*$', '', message, flags=re.IGNORECASE)
         # Retire les tokens ALL-CAPS résiduels isolés (fragments de salle/année mal nettoyés)
         message = re.sub(r'\b(?:zrro|rro|ov|cv)\b', '', message, flags=re.IGNORECASE)
         # Résidus de salle OCR en fin de message (ex: "Sat F- Serre" / "Sai 1 Fr CrÃ©atures")
@@ -1210,6 +1210,9 @@ def parse_announcement(text: str) -> dict | None:
         )
         if _m_sur:
             message = _m_sur.group(1).strip()
+        # Résidu "- '" / "- :" en fin : tiret suivi seulement de ponctuation (vient d'un
+        # "- Salle:" dont la salle a été retirée, le "Salle:" lu "'"). Ex: "(Le Tanuki) - '".
+        message = re.sub(r"\s*[-–]\s*['’\"().,:;]*\s*$", '', message)
         message = re.sub(r'\s{2,}', ' ', message).strip(' ,;-—')
 
         # Fallback : le corps n'a pas produit de titre exploitable.
