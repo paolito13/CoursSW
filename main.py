@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.99"
+VERSION = "1.5.100"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1225,7 +1225,7 @@ def _pil_to_b64(pil_img: Image.Image) -> str:
 
 def send_announcement(tok: str, ann: dict, screenshot_b64: str | None = None, ocr_log: str | None = None, on_log=None) -> bool:
     try:
-        payload: dict = {"exeToken": tok, "announcement": ann}
+        payload: dict = {"exeToken": tok, "announcement": ann, "version": VERSION}
         if screenshot_b64:
             payload["screenshot"] = screenshot_b64
         if ocr_log:
