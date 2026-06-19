@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.108"
+VERSION = "1.5.109"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -634,6 +634,9 @@ def parse_announcement(text: str) -> dict | None:
     # Résidus artefacts OCR FiveM header (fiveM@ by Cfx.re…, "ps" ou "fps" isolés en nombre)
     joined = re.sub(r'\bfiveM@[^A-ZÀ-Ü]*(?=ANNONCE)', '', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\b\d+\s*(?:fps|ps)\b', '', joined, flags=re.IGNORECASE)
+    # Compteur FPS avec chiffres mal lus (ex: "100fps" → "Iêêfps", "Ioofps") : tout token
+    # finissant par "fps" est l'overlay FiveM, jamais un mot/nom réel → supprimer.
+    joined = re.sub(r'\b\w*fps\b', '', joined, flags=re.IGNORECASE)
     # Overlay "FPS: 237" / "FPS:- 237" / "FPS - 237" (label AVANT le nombre, avec ponctuation)
     # — sinon le FPS se colle à "ERE ANNÉE" et devient une fausse année ("237 ERE ANNÉE")
     joined = re.sub(r'\bFPS\s*[:\-]*\s*\d+', '', joined, flags=re.IGNORECASE)
