@@ -155,8 +155,10 @@ def hardcoded_anomalies(ann: dict) -> list[str]:
         # Commence par "Initiale Nom" (résidu auteur)
         if re.match(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}', message):
             issues.append(f"message commence par pattern 'Initiale Nom' (résidu auteur) : '{message[:40]}'")
-        # Chiffres orphelins (résidus overlays FiveM)
-        if re.search(r'\b\d{2,4}\b', message) and not re.search(r'\b\d+\s*(?:e|è|ème|iere?|ère?)\b', message, re.IGNORECASE):
+        # Chiffres orphelins (résidus overlays FiveM) — on ignore les années historiques
+        # plausibles (1500-2099, ex: "… Avant 1924") qui font légitimement partie d'un titre.
+        _msg_no_year = re.sub(r'\b(?:1[5-9]\d{2}|20\d{2})\b', '', message)
+        if re.search(r'\b\d{2,4}\b', _msg_no_year) and not re.search(r'\b\d+\s*(?:e|è|ème|iere?|ère?)\b', _msg_no_year, re.IGNORECASE):
             issues.append(f"message contient chiffres orphelins (résidu overlay ?) : '{message[:60]}'")
         # Lettre minuscule isolée parasite au milieu du message
         if re.search(r'(?<=[a-zà-üA-ZÀ-Ü])\s+[a-z]\s+(?=[A-ZÀ-Ü])', message):

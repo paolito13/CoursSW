@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.111"
+VERSION = "1.5.112"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -564,6 +564,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r"HISI['’]OIRES", 'HISTOIRES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMUSQUE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLITTERATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
+    # "LI-rrÉRATURE" / "LIrrÉRATURE" = "Littérature" mal lu ("TT" → "-rr"/"rr"). Ce garble
+    # n'apparaît qu'en lecture casse-mixte → on rend "Littérature" (et non LITTÉRATURE) pour
+    # ne pas créer un îlot tout-majuscules dans un message déjà en Title-Case.
+    joined = re.sub(r'\bLI[-\s]?rr[ÉE]RATURE\b', 'Littérature', joined, flags=re.IGNORECASE)
     # Variantes OCR de SALLE : SAUE / SAIE / SAILE / SAI F / SAT F / SAT F- / SAT F. / SA' 'F / SATJF / SAI 1 Fr / SAI.IE / SALIE
     joined = re.sub(r"SALLE O'ETUDE", "SALLE D'ETUDE", joined, flags=re.IGNORECASE)
     joined = re.sub(r"SAI\s+1\s+E(?=D')", 'SALLE ', joined, flags=re.IGNORECASE)
@@ -1164,6 +1168,10 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\b(?:zrro|rro|ov|cv)\b', '', message, flags=re.IGNORECASE)
         # Résidus de salle OCR en fin de message (ex: "Sat F- Serre" / "Sai 1 Fr CrÃ©atures")
         message = re.sub(r'\s+(?:Sat|Sai|Sau)\s*[F\-\.]+.*$', '', message, flags=re.IGNORECASE)
+        # Localisation "Cheminée/Cheminette : <pièce>" en fin de message : indicateur de lieu
+        # (destination de cheminette), jamais un morceau du titre du cours → on coupe tout après.
+        # Ex: "(Tonique du Vent Abyssal) Cheminée : Salle Des Clubs" → "(Tonique du Vent Abyssal)".
+        message = re.sub(r'\s+Chemin\w*\s*:.*$', '', message, flags=re.IGNORECASE)
         # Métadonnée salle recopiée APRÈS le titre, derrière un " - " (ex: "Le Fangor - CA' \\ F :
         # Cheminée: Bibliothèque", "(Les Dragons - Cours 1) - Salle …") : on coupe au " - " dont
         # le segment suivant contient un ":" ou un mot de salle. On ne touche pas un vrai titre à
@@ -1232,6 +1240,10 @@ def parse_announcement(text: str) -> dict | None:
         )
         if _m_sur:
             message = _m_sur.group(1).strip()
+        # Préfixe "Sur " résiduel du template "COURS … SUR [titre]" : le vrai titre est la suite
+        # (ex: "Sur Le Grand Méchant Loup" → "Le Grand Méchant Loup"). "Sur" collé ("Surnaturel")
+        # n'est pas touché (espace requis).
+        message = re.sub(r'^Sur\s+', '', message, flags=re.IGNORECASE)
         # Résidu "- '" / "- :" en fin : tiret suivi seulement de ponctuation (vient d'un
         # "- Salle:" dont la salle a été retirée, le "Salle:" lu "'"). Ex: "(Le Tanuki) - '".
         message = re.sub(r"\s*[-–]\s*['’\"().,:;]*\s*$", '', message)
