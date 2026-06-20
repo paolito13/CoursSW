@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.112"
+VERSION = "1.5.113"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -819,6 +819,7 @@ def parse_announcement(text: str) -> dict | None:
             if m and m.group(2).isupper():
                 return m.group(1) + m.group(2).capitalize() + m.group(3)
             return w
+        _raw_payload_tokens = payload.split()  # avant normalisation (casse brute conservée)
         payload = ' '.join(_norm_tok(w) for w in payload.split())
 
         # ── Auteur ────────────────────────────────────────────────────────────
@@ -848,6 +849,23 @@ def parse_announcement(text: str) -> dict | None:
             author = re.sub(r'\.[A-ZÀ-Ü]$', '', author).strip()
             # Retire les suffixes numériques parasites (ex: "Paolito 7*10" → "Paolito")
             author = re.sub(r'\s+[\d\*\+\/\-\.]+\s*\S*$', '', author).strip()
+            # Mot du TITRE absorbé par erreur en fin d'auteur : l'auteur est en petites capitales
+            # (l'OCR rend des minuscules, ex: "CALELOk MÉRIASTRfL") tandis que le titre est en
+            # grandes capitales pures ("LOCUS MINOR"). Si le DERNIER token de l'auteur était
+            # tout-majuscules dans le brut alors qu'un token précédent contient une minuscule,
+            # c'est le 1er mot du titre → on le rend au message (l'auteur ramené à 2 mots est
+            # recalé par le référentiel serveur). Ne se déclenche pas si l'auteur est entièrement
+            # en capitales (aucune minuscule avant) → pas de régression sur les noms tout-caps.
+            _overflow_tok = ""
+            _auth_toks = author.split()
+            if len(_auth_toks) >= 3:
+                _idx0 = len(payload[:m_a.start(1)].split())
+                _auth_raw = _raw_payload_tokens[_idx0:_idx0 + len(_auth_toks)]
+                if len(_auth_raw) == len(_auth_toks) and \
+                   re.fullmatch(r"[A-ZÀ-Ü][A-ZÀ-Ü'’\-]+", _auth_raw[-1]) and \
+                   any(re.search(r'[a-zà-ÿ]', t) for t in _auth_raw[:-1]):
+                    _overflow_tok = _auth_toks[-1]
+                    author = ' '.join(_auth_toks[:-1])
             # Validation auteur : rejette les noms ALL-CAPS avec tiret interne (ex: "Mu-IER", "Oreg-L")
             # Un nom valide a au moins une lettre minuscule (après normalisation Title Case)
             # On rejette aussi les noms de 1 seul mot trop courts (< 3 chars)
@@ -863,6 +881,8 @@ def parse_announcement(text: str) -> dict | None:
                 if _has_allcaps_hyphen or (_all_upper and len(_author_words) <= 2 and sum(len(w) for w in _author_words) < 8):
                     author = ""
             payload = payload[m_a.end():].strip()
+            if _overflow_tok:
+                payload = (_overflow_tok + ' ' + payload).strip()
             # Résidu OCR d'un nom de famille cassé : auteur tronqué à une initiale seule
             # (ex: "Klaus M") + fragment minuscule en tête de payload (ex: "yns" pour
             # "Myers"). Le payload est en Title-Case, donc un token entièrement minuscule
@@ -1172,6 +1192,10 @@ def parse_announcement(text: str) -> dict | None:
         # (destination de cheminette), jamais un morceau du titre du cours → on coupe tout après.
         # Ex: "(Tonique du Vent Abyssal) Cheminée : Salle Des Clubs" → "(Tonique du Vent Abyssal)".
         message = re.sub(r'\s+Chemin\w*\s*:.*$', '', message, flags=re.IGNORECASE)
+        # Résidu de délai tronqué en fin de message : "DANS 3" sans "minute(s)" (l'OCR a coupé
+        # le template "Dans X minute(s)"). On retire le "Dans [X]" final → le délai reste vide
+        # (capture tronquée) plutôt que de polluer le titre. Ex: "Locus Minor Dans" → "Locus Minor".
+        message = re.sub(r'\s+Dans(?:\s+\d{1,3})?\s*$', '', message, flags=re.IGNORECASE)
         # Métadonnée salle recopiée APRÈS le titre, derrière un " - " (ex: "Le Fangor - CA' \\ F :
         # Cheminée: Bibliothèque", "(Les Dragons - Cours 1) - Salle …") : on coupe au " - " dont
         # le segment suivant contient un ":" ou un mot de salle. On ne touche pas un vrai titre à
