@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.110"
+VERSION = "1.5.111"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -539,6 +539,11 @@ def parse_announcement(text: str) -> dict | None:
     # "ASHWCX)D" → "ASHWCXD") — un vrai ")" est en fin de mot, jamais entre deux lettres.
     # Évite que le nom d'auteur soit tronqué au ")" (ex: "Caleix" au lieu de "Caledor Mériastrel").
     joined = re.sub(r'(?<=[A-Za-zÀ-ÿ])\)(?=[A-Za-zÀ-ÿ])', '', joined)
+    # Virgule SANS espace coincée entre deux MAJUSCULES = "/" mal lu (séparateur de liste
+    # de sorts en petites capitales, ex: "DEFENDO/FLIPALTO,TIBOBO"). Une vraie virgule
+    # française est toujours suivie d'une espace → ce motif est forcément un garble.
+    # Recolle le token tout-majuscules au lieu de le laisser se faire title-caser isolément.
+    joined = re.sub(r'(?<=[A-ZÀ-Ü]),(?=[A-ZÀ-Ü])', '/', joined)
     # Corrections typos OCR fréquentes sur les noms de salles et mots-clés
     joined = re.sub(r'\bGENERAUSTE\b', 'GÉNÉRALISTE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bGENERALUSTE\b', 'GÉNÉRALISTE', joined, flags=re.IGNORECASE)
