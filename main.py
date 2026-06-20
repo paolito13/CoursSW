@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.109"
+VERSION = "1.5.110"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -605,6 +605,9 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bOUEL\b', 'DUEL', joined, flags=re.IGNORECASE)
     # "SORIS" = catégorie "SORTS" mal lue (écho de la matière dans le corps)
     joined = re.sub(r'\bSORIS\b', 'SORTS', joined, flags=re.IGNORECASE)
+    # "SOURREN" = "SOUTIEN" mal lu ("TI" → "rr" en petites capitales serif) — récurrent
+    # dans les titres "Club de Soutien". "sourren" n'est pas un mot → correction sûre.
+    joined = re.sub(r'\bSOU?RR[EÉ]N\b', 'SOUTIEN', joined, flags=re.IGNORECASE)
     # "i-ùVES" / "i-uVES" = "ÉLÈVES" (même famille de garble que ÉLÈVFS ci-dessus)
     joined = re.sub(r'\bi-[ùu]VES\b', 'ÉLÈVES', joined, flags=re.IGNORECASE)
     # Variantes OCR de DANS (déclencheur du délai) : OANS/0ANS (D→O/0), DAN5/DANJ (S→5/J),
