@@ -6,6 +6,7 @@ import os
 import re
 import base64
 import sys
+import time
 import datetime
 import subprocess
 
@@ -257,8 +258,150 @@ def create_issue(aid: str, ann: dict, anomalie: str, ocr_log: str | None) -> Non
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# COUCHE 2 — vérification IA "Économique max" : Haiku 4.5 + Batch API (-50%) +
+# prompt caching sur la consigne fixe. Repli synchrone si le batch échoue.
+# ═══════════════════════════════════════════════════════════════════════════════
+AI_MODEL = "claude-haiku-4-5"
+
+# Consigne STATIQUE (identique à chaque annonce) → mise en cache (cache_control)
+# pour ne payer le prefix qu'une fois par lot. Les champs/OCR variables vont dans
+# le message utilisateur.
+SYSTEM_RULES = """Tu es un vérificateur OCR pour des annonces de cours d'une école de magie FiveM (Seven Wands / Poudlard).
+Tu as accès à TROIS sources : le screenshot original (image), le texte OCR brut, et les champs parsés (fournis dans le message).
+
+IMPORTANT — il y a deux familles d'erreurs distinctes à chercher, ne te limite pas à la première :
+1. Erreur de PARSING : le texte OCR brut est correct mais les champs extraits ne correspondent pas à ce texte.
+2. Erreur de LECTURE OCR : le texte OCR brut lui-même est déjà faux par rapport à ce qui est réellement écrit
+   sur le SCREENSHOT (mot mal lu, lettres déformées, mot tronqué/fusionné, salle/année illisible mal retranscrite).
+   Dans ce cas les champs parsés peuvent fidèlement refléter l'OCR brut et sembler "cohérents" alors que le
+   résultat final affiché sur le site est quand même faux — c'est CETTE catégorie qui passe le plus souvent
+   inaperçue, regarde bien l'image et pas seulement le texte OCR avant de conclure qu'il n'y a pas d'anomalie.
+
+Compare le texte OCR brut ET les champs parsés avec ce qui est visible sur le screenshot, et identifie toute erreur.
+
+**Règles du parsing :**
+- Le texte commence toujours par "ANNONCE DE COURS PAR [NOM PROFESSEUR]"
+- Suit ensuite le titre du cours, l'année, la salle, et le délai avant le cours
+- Les salles connues : Salle Potions, Salle Botanique/Serres, Salle Étude de Golmu, Salle Créatures Magiques, Salle Astronomie, Salle Transfiguration, Salle Défense, Salle Histoire de la Magie, etc.
+- Les années : 1ère à 7ème Année (parfois "Toutes années")
+- Les noms de profs sont en Title Case (Prénom Nom)
+
+**Anomalies à chercher (sois exhaustif, ne pas hésiter à signaler) :**
+1. Author incorrect : mauvais nom, tronqué, contient des tokens parasites (chiffres, abréviations OCR, stop words)
+2. Message incorrect : contient des artefacts OCR, est tronqué, contient des fragments de la salle/année/délai, ou commence/finit mal
+3. Room incorrecte : ne correspond pas à la salle visible dans l'OCR
+4. Year incorrecte : année mal parsée ou manquante alors qu'elle est dans l'OCR
+5. Delay incorrect : délai mal parsé ou absent alors qu'il est dans l'OCR
+6. Message trop long incluant la salle/année qui auraient dû être extraites séparément
+7. Artefacts OCR non nettoyés dans n'importe quel champ (lettres isolées, chiffres parasites, tokens ALL-CAPS résiduels)
+8. Parsing ambigu : le message contient à la fois le titre du cours ET un sous-titre séparés par "/" ou "–" qui n'ont pas été bien séparés
+
+**CONSIGNE :** Signale toute anomalie, même si tu n'es pas sûr à 100%. Mieux vaut un faux positif qu'une erreur ignorée.
+
+Réponds en JSON :
+- Si anomalie(s) détectée(s) : {"anomalie": "description concise de CE QUI EST FAUX et CE QUE ça DEVRAIT ÊTRE"}
+- Si tout semble correct : {"anomalie": null}"""
+
+
+def _user_content(ann, ocr_log, screenshot_b64):
+    """Bloc utilisateur (variable) : image + champs parsés + OCR brut."""
+    txt = (
+        "**Champs parsés :**\n"
+        f"- author: {ann.get('author', '(vide)')}\n"
+        f"- room: {ann.get('room', '(vide)')}\n"
+        f"- year: {ann.get('year', '(vide)')}\n"
+        f"- message: {ann.get('message', '(vide)')}\n"
+        f"- delay: {ann.get('delay', '(vide)')}\n\n"
+        "**Texte OCR brut :**\n```\n"
+        f"{ocr_log or '(non disponible — utilise le screenshot)'}\n```"
+    )
+    content = []
+    if screenshot_b64:
+        content.append({"type": "image",
+                        "source": {"type": "base64", "media_type": "image/png", "data": screenshot_b64}})
+    content.append({"type": "text", "text": txt})
+    return content
+
+
+def _handle_ai_result(aid, ann, ocr_log, result_text):
+    """Parse la réponse IA et crée une issue si anomalie."""
+    result = None
+    for m_json in re.finditer(r'\{', result_text):
+        try:
+            end = result_text.rindex('}', m_json.start()) + 1
+            result = json.loads(result_text[m_json.start():end])
+            break
+        except Exception:
+            continue
+    if result is None:
+        print(f"  ⚠️ {aid}: pas de JSON valide.")
+        anomalies_run.append({"id": aid, "description": "(réponse invalide)", "fixed": False})
+    elif result.get("anomalie"):
+        anomalie = result["anomalie"]
+        print(f"  🔴 {aid}: {anomalie}")
+        anomalies_run.append({"id": aid, "description": anomalie[:120], "fixed": False})
+        create_issue(aid, ann, anomalie, ocr_log)
+    else:
+        print(f"  ✅ {aid}: aucune anomalie.")
+
+
+def _analyze_sync(candidates):
+    """Repli : un appel Haiku par annonce (si le batch échoue)."""
+    print(f"  ↪ repli synchrone Haiku sur {len(candidates)} annonce(s).")
+    for aid, ann, ocr_log, b64 in candidates:
+        try:
+            resp = client.messages.create(
+                model=AI_MODEL, max_tokens=400,
+                system=[{"type": "text", "text": SYSTEM_RULES, "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content": _user_content(ann, ocr_log, b64)}],
+            )
+            _handle_ai_result(aid, ann, ocr_log, resp.content[0].text.strip())
+        except Exception as e:
+            print(f"  ❌ {aid}: {e}")
+
+
+def analyze_candidates(candidates):
+    """Vérifie les annonces 'propres' (couche 1 OK) via Batch API Haiku (-50%),
+    avec prompt caching. Repli synchrone si le batch n'aboutit pas."""
+    if not candidates:
+        return
+    by_id = {aid: (ann, ocr_log) for aid, ann, ocr_log, _ in candidates}
+    reqs = [{
+        "custom_id": aid,
+        "params": {
+            "model": AI_MODEL,
+            "max_tokens": 400,
+            "system": [{"type": "text", "text": SYSTEM_RULES, "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": _user_content(ann, ocr_log, b64)}],
+        },
+    } for aid, ann, ocr_log, b64 in candidates]
+    try:
+        batch = client.messages.batches.create(requests=reqs)
+        print(f"  Batch {batch.id} soumis ({len(reqs)} annonce(s)). Attente…")
+        deadline = time.time() + 1500  # 25 min max (filet CI)
+        while time.time() < deadline:
+            st = client.messages.batches.retrieve(batch.id)
+            if st.processing_status == "ended":
+                break
+            time.sleep(20)
+        else:
+            raise TimeoutError("batch non terminé sous 25 min")
+        for res in client.messages.batches.results(batch.id):
+            aid = res.custom_id
+            ann, ocr_log = by_id.get(aid, ({}, None))
+            if res.result.type == "succeeded":
+                _handle_ai_result(aid, ann, ocr_log, res.result.message.content[0].text.strip())
+            else:
+                print(f"  ❌ {aid}: batch {res.result.type}")
+    except Exception as e:
+        print(f"  ⚠️ Batch indisponible ({e}) → repli synchrone.")
+        _analyze_sync(candidates)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # BOUCLE PRINCIPALE
 # ═══════════════════════════════════════════════════════════════════════════════
+candidates: list = []  # annonces 'propres' (couche 1 OK) à vérifier par l'IA
 for ann in nouvelles:
     aid = ann["id"]
     print(f"\n{'─'*60}\nAnalyse {aid}...")
@@ -291,103 +434,13 @@ for ann in nouvelles:
         analyzed.add(aid)
         continue  # Pas besoin de passer par l'IA
 
-    # ── COUCHE 2 : analyse IA (Sonnet) pour cas subtils ───────────────────────
-    author = ann.get("author", "(vide)")
-    message = ann.get("message", "(vide)")
-    room = ann.get("room", "(vide)")
-    year = ann.get("year", "(vide)")
-    delay = ann.get("delay", "(vide)")
-
-    prompt = f"""Tu es un vérificateur OCR pour des annonces de cours d'une école de magie FiveM (Seven Wands / Poudlard).
-Tu as accès à TROIS sources : le screenshot original (image), le texte OCR brut, et les champs parsés.
-
-IMPORTANT — il y a deux familles d'erreurs distinctes à chercher, ne te limite pas à la première :
-1. Erreur de PARSING : le texte OCR brut est correct mais les champs extraits ne correspondent pas à ce texte.
-2. Erreur de LECTURE OCR : le texte OCR brut lui-même est déjà faux par rapport à ce qui est réellement écrit
-   sur le SCREENSHOT (mot mal lu, lettres déformées, mot tronqué/fusionné, salle/année illisible mal retranscrite).
-   Dans ce cas les champs parsés peuvent fidèlement refléter l'OCR brut et sembler "cohérents" alors que le
-   résultat final affiché sur le site est quand même faux — c'est CETTE catégorie qui passe le plus souvent
-   inaperçue, regarde bien l'image et pas seulement le texte OCR avant de conclure qu'il n'y a pas d'anomalie.
-
-Compare le texte OCR brut ET les champs parsés avec ce qui est visible sur le screenshot, et identifie toute erreur.
-
-**Champs parsés :**
-- author: {author}
-- room: {room}
-- year: {year}
-- message: {message}
-- delay: {delay}
-
-**Texte OCR brut :**
-```
-{ocr_log or "(non disponible — utilise le screenshot)"}
-```
-
-**Règles du parsing :**
-- Le texte commence toujours par "ANNONCE DE COURS PAR [NOM PROFESSEUR]"
-- Suit ensuite le titre du cours, l'année, la salle, et le délai avant le cours
-- Les salles connues : Salle Potions, Salle Botanique/Serres, Salle Étude de Golmu, Salle Créatures Magiques, Salle Astronomie, Salle Transfiguration, Salle Défense, Salle Histoire de la Magie, etc.
-- Les années : 1ère à 7ème Année (parfois "Toutes années")
-- Les noms de profs sont en Title Case (Prénom Nom)
-
-**Anomalies à chercher (sois exhaustif, ne pas hésiter à signaler) :**
-1. Author incorrect : mauvais nom, tronqué, contient des tokens parasites (chiffres, abréviations OCR, stop words)
-2. Message incorrect : contient des artefacts OCR, est tronqué, contient des fragments de la salle/année/délai, ou commence/finit mal
-3. Room incorrecte : ne correspond pas à la salle visible dans l'OCR
-4. Year incorrecte : année mal parsée ou manquante alors qu'elle est dans l'OCR
-5. Delay incorrect : délai mal parsé ou absent alors qu'il est dans l'OCR
-6. Message trop long incluant la salle/année qui auraient dû être extraites séparément
-7. Artefacts OCR non nettoyés dans n'importe quel champ (lettres isolées, chiffres parasites, tokens ALL-CAPS résiduels)
-8. Parsing ambigu : le message contient à la fois le titre du cours ET un sous-titre séparés par "/" ou "–" qui n'ont pas été bien séparés
-
-**CONSIGNE :** Signale toute anomalie, même si tu n'es pas sûr à 100%. Mieux vaut un faux positif qu'une erreur ignorée.
-
-Réponds en JSON :
-- Si anomalie(s) détectée(s) : {{"anomalie": "description concise de CE QUI EST FAUX et CE QUE ça DEVRAIT ÊTRE"}}
-- Si tout semble correct : {{"anomalie": null}}
-"""
-
-    content = []
-    if screenshot_b64:
-        content.append({
-            "type": "image",
-            "source": {"type": "base64", "media_type": "image/png", "data": screenshot_b64}
-        })
-    content.append({"type": "text", "text": prompt})
-
-    try:
-        resp = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=400,
-            messages=[{"role": "user", "content": content}]
-        )
-        result_text = resp.content[0].text.strip()
-        print(f"  Réponse Sonnet: {result_text[:300]}")
-
-        result = None
-        for m_json in re.finditer(r'\{', result_text):
-            try:
-                end = result_text.rindex('}', m_json.start()) + 1
-                result = json.loads(result_text[m_json.start():end])
-                break
-            except Exception:
-                continue
-
-        if result is None:
-            print("  ⚠️ Pas de JSON valide.")
-            anomalies_run.append({"id": aid, "description": "(réponse invalide)", "fixed": False})
-        elif result.get("anomalie"):
-            anomalie = result["anomalie"]
-            print(f"  🔴 Sonnet: {anomalie}")
-            anomalies_run.append({"id": aid, "description": anomalie[:120], "fixed": False})
-            create_issue(aid, ann, anomalie, ocr_log)
-        else:
-            print("  ✅ Aucune anomalie.")
-
-    except Exception as e:
-        print(f"  ❌ Erreur Claude: {e}")
-
+    # ── COUCHE 2 : annonce 'propre' pour la couche 1 → vérification IA en lot ──
+    print("  → file d'attente vérification IA (batch)")
+    candidates.append((aid, ann, ocr_log, screenshot_b64))
     analyzed.add(aid)
+
+# ── Vérification IA groupée (Batch Haiku -50% + cache) avec repli synchrone ──
+analyze_candidates(candidates)
 
 # --- Sauvegarder IDs ---
 with open(ANALYZED_FILE, "w") as f:
