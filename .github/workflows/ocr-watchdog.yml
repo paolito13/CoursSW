@@ -40,5 +40,13 @@ jobs:
           git config user.name "OCR Watchdog"
           git config user.email "ocr-watchdog@almanach-peh"
           git add .ocr_analyzed_ids.txt
-          git diff --cached --quiet || git commit -m "chore : IDs OCR analysés mis à jour"
-          git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git HEAD:main
+          if git diff --cached --quiet; then
+            echo "Rien à commiter."
+          else
+            git commit -m "chore : IDs OCR analysés mis à jour"
+            URL="https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git"
+            for i in 1 2 3 4 5; do
+              git pull --rebase --autostash "$URL" main && git push "$URL" HEAD:main && { echo "pushé"; break; }
+              echo "collision push (try $i) → rebase + retry"; sleep $((RANDOM % 5 + 3))
+            done
+          fi

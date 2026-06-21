@@ -8,6 +8,11 @@ jobs:
   fix:
     if: github.event.label.name == 'ocr-anomaly'
     runs-on: ubuntu-latest
+    # Sérialise tous les auto-fix : une rafale d'issues (ex. lot du watchdog) ne
+    # pousse plus en parallèle sur main → plus de collision de push.
+    concurrency:
+      group: coursw-main-push
+      cancel-in-progress: false
     permissions:
       contents: write
       issues: write
@@ -50,7 +55,11 @@ jobs:
           else
             VER=$(cat ../new_version.txt 2>/dev/null || echo "?")
             git commit -m "fix: auto-correction OCR issue #${{ github.event.issue.number }} → v${VER}"
-            git push https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git HEAD:main
+            URL="https://paolito13:${{ secrets.GH_PAT }}@github.com/paolito13/CoursSW.git"
+            for i in 1 2 3 4 5; do
+              git pull --rebase --autostash "$URL" main && git push "$URL" HEAD:main && { echo "pushé"; break; }
+              echo "collision push (try $i) → rebase + retry"; sleep $((RANDOM % 5 + 3))
+            done
           fi
 
       - name: Fermer l'issue avec commentaire
