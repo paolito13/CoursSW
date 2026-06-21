@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.115"
+VERSION = "1.5.116"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -601,6 +601,8 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bBOIANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBOTANIQVE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBO[VT]ANIQ[VU]E\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)  # BOVANIQVE (T→V, U→V)
+    joined = re.sub(r'\bBOTANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bMONOE\b', 'MONDE', joined, flags=re.IGNORECASE)  # "Création du Monoe" (D lu O) — cours récurrent
     joined = re.sub(r'\bTHÉORIWE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÃORIQVE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bM[ÉEÃ]ORIQ[_\s]?[YVU]E\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)  # "mÉORIQ_YE" (T→m)
@@ -1192,6 +1194,9 @@ def parse_announcement(text: str) -> dict | None:
         # (destination de cheminette), jamais un morceau du titre du cours → on coupe tout après.
         # Ex: "(Tonique du Vent Abyssal) Cheminée : Salle Des Clubs" → "(Tonique du Vent Abyssal)".
         message = re.sub(r'\s+Chemin\w*\s*:.*$', '', message, flags=re.IGNORECASE)
+        # "Cheminée/Cheminette" SEULE en fin (sans ':' ni pièce, ex: "… Partie 1- Cheminée") :
+        # étiquette de lieu tronquée → on la retire (jamais un mot de titre en fin).
+        message = re.sub(r'\s*[-–]?\s*Chemin(?:[ée]e?|ette)\s*$', '', message, flags=re.IGNORECASE)
         # Résidu de délai tronqué en fin de message : "DANS 3" sans "minute(s)" (l'OCR a coupé
         # le template "Dans X minute(s)"). On retire le "Dans [X]" final → le délai reste vide
         # (capture tronquée) plutôt que de polluer le titre. Ex: "Locus Minor Dans" → "Locus Minor".
