@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.119"
+VERSION = "1.5.120"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1203,7 +1203,11 @@ def parse_announcement(text: str) -> dict | None:
         # Parenthèse de LIEU en fin de message — débute par un mot de salle (Salle / Étude /
         # "Salintude" = "Salle Étude" mal lu…) : c'est la salle recopiée dans le titre, déjà
         # extraite dans le champ room → on la retire. Ex: "… (Salintude Golmue)" supprimé.
-        message = re.sub(r'\s*\(\s*(?:sal\w*|[ée]tude)\b[^)]*\)\s*$', '', message, flags=re.IGNORECASE)
+        # parenthèse fermante OPTIONNELLE : l'OCR coupe souvent la fin ("… (Saliecréature").
+        message = re.sub(r'\s*\(\s*(?:sal\w*|[ée]tude)\b[^)]*\)?\s*$', '', message, flags=re.IGNORECASE)
+        # Parenthèse d'ANNÉE en fin (métadonnée déjà extraite, ex: "(6E Année)", "(Créature Année)")
+        # → on la retire ; "Année" en parenthèse n'est jamais un mot de titre.
+        message = re.sub(r'\s*\([^)]*\bann[ée]es?\b[^)]*\)?\s*$', '', message, flags=re.IGNORECASE)
         # Résidu de délai tronqué en fin de message : "DANS 3" sans "minute(s)" (l'OCR a coupé
         # le template "Dans X minute(s)"). On retire le "Dans [X]" final → le délai reste vide
         # (capture tronquée) plutôt que de polluer le titre. Ex: "Locus Minor Dans" → "Locus Minor".
