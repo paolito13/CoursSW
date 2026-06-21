@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.120"
+VERSION = "1.5.121"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -661,6 +661,7 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bCP[IU]\b(?!\s*:)', '', joined, flags=re.IGNORECASE)
     # PRATIQYE → PRATIQUE (OCR Y→U), idem PRATIQVE
     joined = re.sub(r'\bPRATIQ[YV]E\b', 'PRATIQUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bPRATIC[UV]JE\b', 'PRATIQUE', joined, flags=re.IGNORECASE)  # "Praticuje" (Q→C, U→UJ)
     # Artefact "cv.URs" (OCR de l'emoji cours) avant PAR
     joined = re.sub(r'\bcv\.URs?\b', '', joined, flags=re.IGNORECASE)
     # Caractères parasites OCR (bullet •, point médian ·)
@@ -679,6 +680,13 @@ def parse_announcement(text: str) -> dict | None:
     _presrip_header_year = _presrip_year_hits[0].group(0).strip() if _presrip_year_hits else ""
     # Header "fiveM@ by Cfx.re - Sevenwands FA - Le seul et l'unique Xs" → strip tout avant ANNONCE
     joined = re.sub(r'^.*?(?=ANNONCE\s+DE\s+COURS)', '', joined, flags=re.IGNORECASE | re.DOTALL)
+    # Pollution Alt-Tab / capture d'écran : si le screenshot a été pris avec le sélecteur de
+    # fenêtres (Alt-Tab) ou l'Outil Capture ouvert, l'OCR avale des TITRES DE FENÊTRES Windows
+    # ("FiveM® by Cfx.re - Sevenwands…", "Outil Capture d'écran", "Discord… LATE"). Aucun de ces
+    # libellés n'apparaît dans un vrai cours → on coupe tout à partir du 1er marqueur de fenêtre.
+    joined = re.sub(
+        r"\s*[»>]?\s*(?:five\s?m\b|cfx\.re|sevenwands|outil\s+(?:de\s+)?capture|capture\s+d'écran|discord)\b.*$",
+        '', joined, flags=re.IGNORECASE | re.DOTALL)
     # Deux annonces empilées dans le même screenshot (ex: "… IMMÉDIATEMENT ANNONCE DE COURS PAR …")
     # → on ne garde que la PREMIÈRE pour ne pas mélanger les deux cours dans un seul message.
     _anns = list(re.finditer(r'ANNONCE\s+DE\s+COURS', joined, re.IGNORECASE))
