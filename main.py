@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.117"
+VERSION = "1.5.118"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -691,6 +691,8 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bPL\s*:\s*CPU:\s*[\d/%]+\s*GPU:\s*[\d/%]+', '', joined, flags=re.IGNORECASE)
     # Bouton fermer FiveM "X" isole avant DANS -> supprimer
     joined = re.sub(r'\s+X\s+(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
+    # Chiffres orphelins résiduels (overlay OCR "11" mal lu, fragments comme "11 X" en fin d'icône)
+    joined = re.sub(r'\b11(?:\s+X)?\s+(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
     # Section icône FiveM "g [MATIÈRE] SALLE [SALLE] [X]" (juste avant DANS/IMMÉDIATEMENT) :
     # c'est l'étiquette du jeu elle-même → source LA PLUS FIABLE pour matière + salle.
     # On la CAPTURE avant de la stripper, pour ne pas avoir à deviner depuis le corps
