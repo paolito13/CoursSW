@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.116"
+VERSION = "1.5.117"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -592,6 +592,7 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bBIBLIOTH[EÉ]QJE\b', 'BIBLIOTHÈQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bBIBLIOTH[EÉ]QYE\b', 'BIBLIOTHÈQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bOOLMUE\b', 'GOLMUE', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'\bGOLM[VY]S\b', 'GOLMUS', joined, flags=re.IGNORECASE)  # "Sports Golmvs" (U lu V)
     joined = re.sub(r'\bETUDEDE\b', 'ETUDE DE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLrr+f?RATURE\b', 'LITTÉRATURE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bSAUSPOTI\w*\b', 'SALLE POTIONS', joined, flags=re.IGNORECASE)
@@ -1197,6 +1198,10 @@ def parse_announcement(text: str) -> dict | None:
         # "Cheminée/Cheminette" SEULE en fin (sans ':' ni pièce, ex: "… Partie 1- Cheminée") :
         # étiquette de lieu tronquée → on la retire (jamais un mot de titre en fin).
         message = re.sub(r'\s*[-–]?\s*Chemin(?:[ée]e?|ette)\s*$', '', message, flags=re.IGNORECASE)
+        # Parenthèse de LIEU en fin de message — débute par un mot de salle (Salle / Étude /
+        # "Salintude" = "Salle Étude" mal lu…) : c'est la salle recopiée dans le titre, déjà
+        # extraite dans le champ room → on la retire. Ex: "… (Salintude Golmue)" supprimé.
+        message = re.sub(r'\s*\(\s*(?:sal\w*|[ée]tude)\b[^)]*\)\s*$', '', message, flags=re.IGNORECASE)
         # Résidu de délai tronqué en fin de message : "DANS 3" sans "minute(s)" (l'OCR a coupé
         # le template "Dans X minute(s)"). On retire le "Dans [X]" final → le délai reste vide
         # (capture tronquée) plutôt que de polluer le titre. Ex: "Locus Minor Dans" → "Locus Minor".
@@ -1296,6 +1301,10 @@ def parse_announcement(text: str) -> dict | None:
         if len(author) < 3 or len(message) < 4:
             return None
 
+        # Année impossible (8ème+ : il n'existe que 1ère→7ème + "Toutes années") = garble OCR
+        # → champ vide plutôt qu'une valeur fausse (ex: "11 EME ANNÉE"). Conforme zéro-faute.
+        if year and re.search(r'\b(?:[89]|[1-9]\d)\s*[èeé]?m', year, re.IGNORECASE):
+            year = ""
         ann: dict = {"type": "cours", "author": author, "message": message}
         if delay:   ann["delay"]   = delay
         if year:    ann["year"]    = year
