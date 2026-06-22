@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.124"
+VERSION = "1.5.125"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -758,6 +758,9 @@ def parse_announcement(text: str) -> dict | None:
     # partie de la phrase → on le retire pour ne pas couper le vrai contenu à la troncature.
     joined = re.sub(r'\bDANS\s+\d+\s+MINUTES?(?:\(S\))?\b(?=\s+(?:SUR|POUR)\b)', '', joined, flags=re.IGNORECASE)
     # Tronquer apres DANS X MINUTE(S): supprime bas popup FiveM + 2eme annonce visible
+    m_delay_full = re.search(r'DANS\s+\d+\s+MINUTES?(?:\(S\))?', joined, re.IGNORECASE)
+    if m_delay_full and not delay:
+        delay = m_delay_full.group(0)
     joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
     joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
