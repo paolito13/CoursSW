@@ -988,6 +988,9 @@ def parse_announcement(text: str) -> dict | None:
             if m_d:
                 delay = m_d.group(0)
                 payload = (payload[:m_d.start()] + payload[m_d.end():]).strip()
+            elif not delay and m_delay_full:
+                # Fallback : délai capturé avant stripping de la section icône
+                delay = m_delay_full.group(0)
 
             # Salle : pivot strict sur la DERNIÈRE occurrence du corps — MAIS seulement si
             # l'icône n'a pas déjà donné la salle. Sinon un "salle" interne à la phrase
