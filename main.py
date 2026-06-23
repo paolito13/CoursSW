@@ -761,7 +761,7 @@ def parse_announcement(text: str) -> dict | None:
     m_delay_full = re.search(r'DANS\s+\d+\s+MINUTES?(?:\(S\))?', joined, re.IGNORECASE)
     if m_delay_full and not delay:
         delay = m_delay_full.group(0)
-    joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
+    joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?(?:\s*\([^)]*\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
     # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
     joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
     # OCR fusionne parfois "NOM,PRENOM" avec une virgule (ex: "CLI,WALLEN" → "CLI WALLEN")
