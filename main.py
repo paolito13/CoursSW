@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.132"
+VERSION = "1.5.133"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -988,9 +988,10 @@ def parse_announcement(text: str) -> dict | None:
             if m_d:
                 delay = m_d.group(0)
                 payload = (payload[:m_d.start()] + payload[m_d.end():]).strip()
-            elif not delay and m_delay_full:
+            elif not delay:
                 # Fallback : délai capturé avant stripping de la section icône
-                delay = m_delay_full.group(0)
+                if m_delay_full:
+                    delay = m_delay_full.group(0)
 
             # Salle : pivot strict sur la DERNIÈRE occurrence du corps — MAIS seulement si
             # l'icône n'a pas déjà donné la salle. Sinon un "salle" interne à la phrase
