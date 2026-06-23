@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.131"
+VERSION = "1.5.132"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -365,7 +365,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
     ('Salle de Duel',              ['duel', 'tolte', 'tour', 'tou-u-r', 'saue', 'musiqye', 'ft-1palto', 'ft-1palt', 'duel pour', 'lorica', 'lorica g', 'g', 'voltumb', 'voltumbfua']),
     ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature', 'litteratur']),
-    ("Salle d'Etude de golmue",    ['golmue', 'golmu', 'etude de golm', 'study', 'golmus', 'sai e', 'sai']),
+    ("Salle d'Étude de Golmue",    ['golmue', 'golmu', 'etude de golm', 'study', 'golmus', 'sai e', 'sai', 'generaliste']),
 ]
 
 def _normalize_room(raw: str) -> str:
