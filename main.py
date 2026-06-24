@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.134"
+VERSION = "1.5.135"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -661,7 +661,9 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bCP[IU]\b(?!\s*:)', '', joined, flags=re.IGNORECASE)
     # PRATIQYE → PRATIQUE (OCR Y→U), idem PRATIQVE
     joined = re.sub(r'\bPRATIQ[YV]E\b', 'PRATIQUE', joined, flags=re.IGNORECASE)
-    joined = re.sub(r'\bPRATIC[UV]JE\b', 'PRATIQUE', joined, flags=re.IGNORECASE)  # "Praticuje" (Q→C, U→UJ)
+    joined = re.sub(r'\bPRATIC[&UV]JE\b', 'PRATIQUE', joined, flags=re.IGNORECASE)  # "Praticuje"/"Pratic&je"
+    joined = re.sub(r'\bTH[EÉ]ORIC[&UV]JE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)  # "Théoric&je"
+    joined = re.sub(r'\bMUSIC[&UV]JE\b', 'MUSIQUE', joined, flags=re.IGNORECASE)  # "Musicuje"
     # Artefact "cv.URs" (OCR de l'emoji cours) avant PAR
     joined = re.sub(r'\bcv\.URs?\b', '', joined, flags=re.IGNORECASE)
     # Caractères parasites OCR (bullet •, point médian ·)
