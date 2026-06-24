@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.135"
+VERSION = "1.5.136"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -431,6 +431,9 @@ _STOP = (
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
     r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation|[Bb][aâ]timent|[Cc]ouloir|[Mm]onter'
+    # Types de potions (jamais un nom d'annonceur) + mots de début de titre fréquents
+    r'|[Nn]anis|[Mm]agna|[Ff]orte|[Mm]axima|[Pp]arva|[Mm]ixtura|[Aa]mplificatio|[Tt]onique|[Ee]lixir|[Ii]nfusion'
+    r'|[Cc]r[eé]ation|[Rr]attrapage|[Rr][eé]union|[Cc]ercle|[Tt]h[eé]orie'
     # Salles (évite que "Duel" soit capturé comme nom)
     r'|[Dd]uel\b|[Gg]eneraliste|[Gg]énéraliste|[Gg]eneralust'
     # Tokens d'années (VII, EME, ERE, ANNEE) qui saignent dans l'auteur
@@ -631,6 +634,9 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bMinutecs\)', 'Minutes', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMINUJE\(S\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMINUTE[A-Za-z]\(S\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
+    # Mot "minute(s)" garblé après "DANS X" (Minuit, Minues, Mjnute, Mini, Minuit(s)…) →
+    # après "DANS <nombre>" l'unité est TOUJOURS minute(s), donc on normalise.
+    joined = re.sub(r'\b(DANS\s+\d+\s+)M[IJ]N\w*(?:\([sS]\))?', r'\1MINUTE(S)', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLIWIDES\b', 'LIQUIDES', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bLIWIDES(?=[A-ZÀÈÙÉ])', 'LIQUIDES ', joined, flags=re.IGNORECASE)  # mot fusionné (ex: LIWIDESMAGIQYES)
     # Format fusionné "(SALLE:XXXX)" → "SALLE XXXX" pour que _norm_tok puisse normaliser
