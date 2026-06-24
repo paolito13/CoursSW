@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.141"
+VERSION = "1.5.142"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -354,7 +354,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('La Cabane',                  ['cabane']),
     ('Salle CMS',                  ['cms']),   # le jeu affiche "Salle CMS" (≠ Salle Potions)
     ('Salle Potions',                  ['potion', 'potions', 'salle de potion']),
-    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes', 'maciqje', 'macqje', 'macawe', 'macawes', 'magi(uje', 'magiqje', 'mac,jqje', 'macte', 'macaques', 'cabysside']),
+    ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes', 'maciqje', 'macqje', 'macawe', 'macawes', 'magi(uje', 'magiqje', 'mac,jqje', 'macte', 'macaques', 'cabysside', 'terragor']),
     ('Serre 1',                    ['serre 1', 'serre1', 'serre', 'serrfs']),
     ('Serre 2',                    ['serre 2', 'serre2']),
     ('Serre 3',                    ['serre 3', 'serre3']),
