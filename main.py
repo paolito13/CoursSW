@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.136"
+VERSION = "1.5.137"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -607,6 +607,10 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bBO[VT]ANIQ[VU]E\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)  # BOVANIQVE (T→V, U→V)
     joined = re.sub(r'\bBOTANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMONOE\b', 'MONDE', joined, flags=re.IGNORECASE)  # "Création du Monoe" (D lu O) — cours récurrent
+    # "Cabysside/Cabyssioe" = lieu "L'Abysside" mal lu : l'OCR fusionne "L'A" en "Ca" (et parfois
+    # D→O). Lieu récurrent des cours Créature Magique. Sortie tout-MAJ → le site title-case en
+    # "L'Abysside" (titleIfUpper capitalise après l'apostrophe).
+    joined = re.sub(r"\bCABYSSI[DO]E\b", "L'ABYSSIDE", joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÉORIWE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bTHÃORIQVE\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bM[ÉEÃ]ORIQ[_\s]?[YVU]E\b', 'THÉORIQUE', joined, flags=re.IGNORECASE)  # "mÉORIQ_YE" (T→m)
