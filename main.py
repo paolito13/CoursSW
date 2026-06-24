@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.140"
+VERSION = "1.5.141"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -774,8 +774,9 @@ def parse_announcement(text: str) -> dict | None:
     # (le délai est capturé plus loin dans la branche cours via m_delay_full — pas ici : la
     # variable `delay` n'existe pas encore à ce stade)
     joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?(?:\s*\([^)]*\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
-    # Artefact OCR d'emoji lu "ft-" en début de token (ex: ft-1PALTO → supprimé entièrement)
-    joined = re.sub(r'\bft-\S+', '', joined, flags=re.IGNORECASE)
+    # Artefact OCR d'emoji lu "ft" en début de token (ex: ftBOBO, ft-1PALTO → supprimés entièrement)
+    # Couvre "ft" suivi de majuscules embarquées (ftBOBO) ET "ft-" avec tiret
+    joined = re.sub(r'\bft(?:-)?\S+', '', joined, flags=re.IGNORECASE)
     # OCR fusionne parfois "NOM,PRENOM" avec une virgule (ex: "CLI,WALLEN" → "CLI WALLEN")
     joined = re.sub(r'\b([A-ZÀ-Ü]{2,}),([A-ZÀ-Ü])', r'\1 \2', joined)
     # Strip du menu paramètres FiveM capturé par OCR (Manette, Clavier, Son, Caméra…)
