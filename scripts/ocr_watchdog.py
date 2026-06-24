@@ -122,25 +122,14 @@ def hardcoded_anomalies(ann: dict) -> list[str]:
     room = ann.get("room", "")
     year = ann.get("year", "")
 
-    # Author
+    # Author — les fautes d'ORTHOGRAPHE/OCR du nom sont recalées par le référentiel serveur à
+    # l'affichage : on ne les flague PLUS (bruit inutile). On ne garde que les vraies erreurs
+    # de PARSING (le champ contient autre chose qu'un nom : chiffre, mot-catégorie de cours).
     if author:
-        tokens = author.split()
-        # Chiffre ou ponctuation parasite dans l'auteur
         if re.search(r'\d', author):
             issues.append(f"author contient un chiffre : '{author}'")
-        # Token tout-majuscules (abréviation OCR) dans l'auteur
-        all_caps = [t for t in tokens if len(t) >= 2 and t.isupper() and t.isalpha()]
-        if all_caps:
-            issues.append(f"author contient token(s) tout-majuscules : {all_caps}")
-        # Trop de tokens (> 3 mots)
-        if len(tokens) > 3:
-            issues.append(f"author trop long ({len(tokens)} tokens) : '{author}'")
-        # Un seul token très court (prénom tronqué ?)
-        if len(tokens) == 1 and len(author) <= 3:
-            issues.append(f"author suspicieusement court : '{author}'")
-        # Commence par une préposition / déterminant
-        if re.match(PREPOSITIONS, author, re.IGNORECASE):
-            issues.append(f"author commence par une préposition : '{author}'")
+        elif re.search(r'\b(?:cours|divers|hdm|idm|sorts?|potions?|club|salle|annonce)\b', author, re.IGNORECASE):
+            issues.append(f"author contient un mot-catégorie (mal parsé) : '{author}'")
 
     # Message
     if message:
@@ -286,17 +275,23 @@ Compare le texte OCR brut ET les champs parsés avec ce qui est visible sur le s
 - Les années : 1ère à 7ème Année (parfois "Toutes années")
 - Les noms de profs sont en Title Case (Prénom Nom)
 
-**Anomalies à chercher (sois exhaustif, ne pas hésiter à signaler) :**
-1. Author incorrect : mauvais nom, tronqué, contient des tokens parasites (chiffres, abréviations OCR, stop words)
-2. Message incorrect : contient des artefacts OCR, est tronqué, contient des fragments de la salle/année/délai, ou commence/finit mal
-3. Room incorrecte : ne correspond pas à la salle visible dans l'OCR
-4. Year incorrecte : année mal parsée ou manquante alors qu'elle est dans l'OCR
-5. Delay incorrect : délai mal parsé ou absent alors qu'il est dans l'OCR
-6. Message trop long incluant la salle/année qui auraient dû être extraites séparément
-7. Artefacts OCR non nettoyés dans n'importe quel champ (lettres isolées, chiffres parasites, tokens ALL-CAPS résiduels)
-8. Parsing ambigu : le message contient à la fois le titre du cours ET un sous-titre séparés par "/" ou "–" qui n'ont pas été bien séparés
+**IMPORTANT — n'analyse PAS le champ `author`.** Le nom de l'annonceur est recalé automatiquement
+par un référentiel serveur à l'affichage (les fautes d'OCR/orthographe sur le nom sont corrigées
+en aval). NE SIGNALE PAS une faute de nom d'auteur, SAUF si le champ contient clairement autre
+chose qu'un nom (un chiffre, ou un mot de catégorie comme « Cours/Divers/Sorts/Salle »).
 
-**CONSIGNE :** Signale toute anomalie, même si tu n'es pas sûr à 100%. Mieux vaut un faux positif qu'une erreur ignorée.
+**Anomalies à chercher (concentre-toi sur le CONTENU affiché) :**
+1. Message incorrect : artefacts OCR non nettoyés, tronqué, contient des fragments de salle/année/délai, ou commence/finit mal (préposition, ponctuation orpheline)
+2. Room incorrecte : ne correspond pas à la salle visible dans l'OCR
+3. Year incorrecte : année mal parsée, ou manquante alors qu'elle est lisible dans l'OCR
+4. Delay incorrect : délai mal parsé, ou absent alors qu'il est lisible dans l'OCR
+5. Message trop long incluant la salle/année qui auraient dû être extraites séparément
+6. Tokens ALL-CAPS résiduels ou majuscules embarquées dans le MESSAGE (pas l'auteur)
+7. Parsing ambigu : titre + sous-titre séparés par "/" ou "–" mal séparés
+
+**CONSIGNE :** Signale les anomalies de CONTENU (message/salle/année/délai) qui rendraient
+l'annonce affichée fausse. Ignore les fautes de nom d'auteur (corrigées en aval) et les captures
+manifestement illisibles/tronquées (rien à corriger). En cas de doute léger sur le contenu, signale.
 
 Réponds en JSON :
 - Si anomalie(s) détectée(s) : {"anomalie": "description concise de CE QUI EST FAUX et CE QUE ça DEVRAIT ÊTRE"}
