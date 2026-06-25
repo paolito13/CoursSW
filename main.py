@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.147"
+VERSION = "1.5.148"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1192,6 +1192,13 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'^[Aa][Nn]\s+(?=[A-ZÀ-Ü])', '', message)  # #166 résidu ".AN X" → "X"
         message = re.sub(r'^[A-ZÀ-Ü][A-Z,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
+        # Fragment de nom d'auteur collé en tête : 1-3 lettres NON-MOT (ex: "IA" de "Heartfilia")
+        # suivies de l'article du vrai titre ("Le/La/Les/L'/Un/Une/Des") → on le retire. Le
+        # négatif-lookahead protège un vrai article/préposition en tête ("De La Magie" conservé).
+        message = re.sub(
+            r"^(?!(?:le|la|les|un|une|de|du|des|et|ou|au|aux|en|à|ce|ces|cet|cette|ma|ta|sa|mon|ton|son|nos|vos)\b)"
+            r"[A-Za-zÀ-ÿ]{1,3}\s+(?=(?:Le|La|Les|L['’]|Un|Une|Des)\b)",
+            '', message, flags=re.IGNORECASE)
         message = re.sub(r'^[a-z]\s+', '', message)          # artefact OCR : minuscule isolée début (émojis mal lus)
         message = re.sub(r'\s+[a-z]\s+', ' ', message)   # au milieu : "Cervorns g X" → "Cervorns X"
         message = re.sub(r'\s+[a-z]$', '', message)          # en fin minuscule
@@ -1295,8 +1302,14 @@ def parse_announcement(text: str) -> dict | None:
         # normalisée, redonne exactement la matière déjà extraite (vrai écho, pas un mot du titre).
         if subject:
             _mw = message.split()
-            while _mw and re.fullmatch(r'\d{1,3}', _mw[-1]):  # chiffres orphelins en fin d'abord
-                _mw.pop()
+            # Chiffres orphelins en fin : on ne les retire que s'ils ressemblent à du BRUIT OCR
+            # (≥2 tokens chiffrés consécutifs, ou un seul ≥3 chiffres). Un petit numéro de leçon
+            # légitime ("Cours 2", "Partie 3") est CONSERVÉ — il fait partie du titre.
+            _nd = 0
+            while _nd < len(_mw) and re.fullmatch(r'\d{1,3}', _mw[-1 - _nd]):
+                _nd += 1
+            if _nd >= 2 or (_nd == 1 and len(_mw[-1]) >= 3):
+                _mw = _mw[:-_nd]
             for _n in (1, 2, 3, 4, 5):  # ordre croissant = écho minimal (ne mange pas un vrai mot du titre)
                 if len(_mw) > _n + 1:
                     _tail = ' '.join(_mw[-_n:])
