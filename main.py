@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.145"
+VERSION = "1.5.146"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1197,8 +1197,15 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'\s+[a-z]$', '', message)          # en fin minuscule
         message = re.sub(r'\s+[A-Z](?:\s+[A-Z]\.?)?$', '', message)          # en fin majuscule isolée ou initiale + majuscule (ex: "Sat F.")
         message = re.sub(r'\s+X(?:\s+|$)', ' ', message)    # artefact OCR : "X" isolée (V mal lu) au milieu ou fin
-        # Retire les résidus d'année qui ont fui dans le message (ex: "X Eme Année" / "5ème Année")
-        message = re.sub(_YEAR_RE, '', message, flags=re.IGNORECASE).strip(' -—,')
+        # Retire les résidus d'année qui ont fui dans le message (ex: "X Eme Année" / "5ème Année").
+        # MAIS conserve "toutes les années" quand c'est de la PROSE (précédé d'une préposition :
+        # "Club ouvert à toutes les années") — sinon on casse la phrase : "ouvert à … Venez".
+        def _strip_year_residue(m, _orig=message):
+            before = _orig[:m.start()].rstrip().lower()
+            if re.match(r'(?i)\s*toutes?\b', m.group()) and re.search(r'\b(?:[àa]|aux?|pour|de|des|d[èe]s|sur)$', before):
+                return m.group()  # prose : on garde la mention dans la phrase
+            return ''
+        message = re.sub(_YEAR_RE, _strip_year_residue, message, flags=re.IGNORECASE).strip(' -—,')
         # Retire les suffixes ordinaux orphelins en fin de message (ex: "Cours 2 Eme" → "Cours 2")
         # "2 Eme" vient de "2ème année" dont "année" était dans la section icône et non dans le titre
         message = re.sub(r'\s+[eèêé]m[eé]?\s*$', '', message, flags=re.IGNORECASE).strip(' -—,')
