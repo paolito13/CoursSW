@@ -356,7 +356,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Salle Potions',                  ['potion', 'potions', 'salle de potion']),
     ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes', 'maciqje', 'macqje', 'macawe', 'macawes', 'magi(uje', 'magiqje', 'mac,jqje', 'macte', 'macaques', 'cabysside', 'terragor']),
     ('Serre 1',                    ['serre 1', 'serre1', 'serre', 'serrfs']),
-    ('Serre 2',                    ['serre 2', 'serre2']),
+    ('Serre 2',                    ['serre 2', 'serre2', 'serre fongique']),
     ('Serre 3',                    ['serre 3', 'serre3']),
     ('Serre 4',                    ['serre 4', 'serre4']),
     ('Salle DCFM (toilettes)',     ['dcfm', 'ocfm', 'toilette', 'saile', 'sox', 'soxis', 'morte', 'mortevsen']),
