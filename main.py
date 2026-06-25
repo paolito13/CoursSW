@@ -383,7 +383,7 @@ def _normalize_room(raw: str) -> str:
 
 # Matières officielles + leurs variantes OCR / abréviations
 _SUBJECTS: list[tuple[str, list[str]]] = [
-    ('Alchimie - Botanique', ['alchimie', 'botanique', 'alch']),
+    ('Alchimie - Botanique', ['alchimie', 'botanique', 'alch', 'alchimie-botanique']),
     ('Sorts',                ['sort', 'sorts', 'magie', 'sai']),
     ('Potions',              ['potion', 'potions']),
     ('Histoire de la Magie', ['histoire', 'hdm', 'hmd', 'hist']),
