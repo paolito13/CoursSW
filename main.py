@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.143"
+VERSION = "1.5.144"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1252,6 +1252,15 @@ def parse_announcement(text: str) -> dict | None:
         # Salle : Littérature", "Sai F : Littérature"). Le ":" la distingue d'une phrase fluide
         # ("… en salle de Duel pour …" n'a pas de ":" après "salle") → on la retire.
         message = re.sub(r'\s+(?:Salle|Serre|Sai|Sat|Sau|Cms|Dcfm)\b[^:]{0,6}:\s*\S.*$', '', message, flags=re.IGNORECASE)
+        # Variante : le LABEL "Salle" avant le ":" est garblé par des emojis collés dans l'annonce
+        # (ex: jeu "Coquille de Voracité 🧊✨ Salle : Serres" → OCR "… Voracité Ca\" F : Serres").
+        # Signature fiable : un ":" suivi d'un MOT DE LIEU (Serre/Salle/Étude/Bibliothèque/…) en
+        # fin de message → on coupe, en avalant les 1-3 tokens courts garblés du label. Le mot de
+        # lieu après le ":" évite de toucher un vrai titre à deux-points ("Potion : Invertum").
+        message = re.sub(
+            r'\s+[^\s:]{1,5}(?:\s+[^\s:]{1,5}){0,2}\s*:\s*'
+            r'(?:serres?|salles?|[ée]tudes?|biblioth\w*|couloirs?|golm\w*|cms|dcfm)\b.*$',
+            '', message, flags=re.IGNORECASE)
         # Format structuré "Titre | Salle X | 2e année | 13h10 | 25 places" (annonces type
         # Livio Lenfield). La présence d'un "|" signale ce bloc de métadonnées : on coupe le
         # message au 1er marqueur = le "|" OU le " Salle/Serre " le plus proche (la vraie salle
