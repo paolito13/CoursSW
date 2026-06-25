@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.142"
+VERSION = "1.5.143"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -432,7 +432,7 @@ _STOP = (
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
     r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation|[Bb][aâ]timent|[Cc]ouloir|[Mm]onter'
     # Types de potions (jamais un nom d'annonceur) + mots de début de titre fréquents
-    r'|[Nn]anis|[Mm]agna|[Ff]orte|[Mm]axima|[Pp]arva|[Mm]ixtura|[Aa]mplificatio|[Tt]onique|[Ee]lixir|[Ii]nfusion'
+    r'|[Nn]anis|[Mm]agna|[Ff]orte|[Mm]axima|[Pp]arva|[Mm]ixtura|[Aa]mplificatio|[Tt]onique|[Ee]lixir|[Ii]nfusion|[Pp]raticue|[Pp]ratique'
     r'|[Cc]r[eé]ation|[Rr]attrapage|[Rr][eé]union|[Cc]ercle|[Tt]h[eé]orie'
     # Salles (évite que "Duel" soit capturé comme nom)
     r'|[Dd]uel\b|[Gg]eneraliste|[Gg]énéraliste|[Gg]eneralust'
