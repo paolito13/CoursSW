@@ -365,7 +365,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
     ('Salle de Duel',              ['duel', 'tolte', 'tour', 'tou-u-r', 'saue', 'musiqye', 'ft-1palto', 'ft-1palt', 'duel pour', 'lorica', 'lorica g', 'g', 'voltumb', 'voltumbfua', 'dans', 'dans5', 'cheminee', 'cheminée', 'tour uastronomie', 'de duel']),
     ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature', 'litteratur', 'fiqa', 'informis', 'divers']),
-    ("Salle d'Étude de Golmue",    ['golmue', 'golmu', 'golmve', 'etude de golm', 'study', 'golmus', 'sai e', 'sai', 'generaliste']),
+    ("Salle d'Étude de Golmue",    ['golmue', 'golmu', 'golmve', 'etude de golm', 'study', 'golmus', 'sai e', 'sai', 'generaliste', 'etude', 'oivers']),
 ]
 
 def _normalize_room(raw: str) -> str:
