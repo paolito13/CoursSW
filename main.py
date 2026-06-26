@@ -359,7 +359,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Serre 2',                    ['serre 2', 'serre2', 'serre fongique']),
     ('Serre 3',                    ['serre 3', 'serre3']),
     ('Serre 4',                    ['serre 4', 'serre4']),
-    ('Salle DCFM (toilettes)',     ['dcfm', 'ocfm', 'toilette', 'saile', 'sox', 'soxis', 'morte', 'mortevsen']),
+    ('Salle DCFM (toilettes)',     ['dcfm', 'ocfm', 'toilette', 'saile', 'sox', 'soxis', 'morte', 'mortevsen', 'boianiqjje', 'botaniq']),
     ('Salle Musique',              ['musique', 'musiqye', 'inscripitoon', 'inscri']),
     ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau', 'generaliete', 'classe generaliste', 'classe general', 'sat f general', '11 x club', '11x', 'x club', 'duel league', 'duel en groupe', 'capture de zone', 'saile generausie', 'saile generau', 'generausie', 'salle generauste', 'dans generauste', 'club serre', 'saile generausie dans', 'potions', 'potions serre', 'serre 1', 'eme annee', 'annee annonce', 'au balai', 'balai']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
