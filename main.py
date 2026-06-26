@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.160"
+VERSION = "1.5.161"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -365,7 +365,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
     ('Salle de Duel',              ['duel', 'tolte', 'tour', 'tou-u-r', 'saue', 'musiqye', 'ft-1palto', 'ft-1palt', 'duel pour', 'lorica', 'lorica g', 'g', 'voltumb', 'voltumbfua', 'dans', 'dans5', 'cheminee', 'cheminée', 'tour uastronomie', 'de duel']),
     ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature', 'litteratur', 'fiqa', 'informis', 'divers']),
-    ("Salle d'Étude de Golmue",    ['golmue', 'golmu', 'golmve', 'etude de golm', 'study', 'golmus', 'sai e', 'sai', 'generaliste', 'etude', 'oivers']),
+    ("Salle d'Étude de Golmue",    ['golmue', 'golmu', 'golmve', 'etude de golm', 'study', 'golmus', 'sai e', 'sai', 'generaliste', 'etude', 'oivers', 'divers']),
 ]
 
 def _normalize_room(raw: str) -> str:
