@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.162"
+VERSION = "1.5.163"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -716,6 +716,8 @@ def parse_announcement(text: str) -> dict | None:
     # Aussi "11" isolé en fin de message (overlay corrompu, ex: "Lecmseti.Fsvampires 11")
     joined = re.sub(r'\b11(?:\s+(?:X|ANNÉE|ann[eé]e))?\s+(?=DANS\b|$)', ' ', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\s+11\s*$', ' ', joined)
+    # Chiffres orphelins parasites avant DANS (reliquat d'overlay OCR : "rSHDM - Elizabeth Bath 111 X ... DANS")
+    joined = re.sub(r'\s+\d{2,}\s+(?:X\s+)?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
     # Section icône FiveM "g [MATIÈRE] SALLE [SALLE] [X]" (juste avant DANS/IMMÉDIATEMENT) :
     # c'est l'étiquette du jeu elle-même → source LA PLUS FIABLE pour matière + salle.
     # On la CAPTURE avant de la stripper, pour ne pas avoir à deviner depuis le corps
