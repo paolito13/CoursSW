@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.172"
+VERSION = "1.5.173"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1263,13 +1263,20 @@ def parse_announcement(text: str) -> dict | None:
         # extraite dans le champ room → on la retire. Ex: "… (Salintude Golmue)" supprimé.
         # parenthèse fermante OPTIONNELLE : l'OCR coupe souvent la fin ("… (Saliecréature").
         message = re.sub(r'\s*\(\s*(?:sal\w*|[ée]tude)\b[^)]*\)?\s*$', '', message, flags=re.IGNORECASE)
-        # Parenthèse d'ANNÉE en fin (métadonnée déjà extraite, ex: "(6E Année)", "(Créature Année)")
-        # → on la retire ; "Année" en parenthèse n'est jamais un mot de titre.
-        message = re.sub(r'\s*\([^)]*\bann[ée]es?\b[^)]*\)?\s*$', '', message, flags=re.IGNORECASE)
-        # Métadonnée d'année dont la parenthèse OUVRANTE a été perdue par l'OCR : "(6e année)" lu
-        # "année)" (au milieu/fin du titre, suivi d'autres métadonnées comme "(Salle:…)"). Le mot
-        # "année" suivi d'une ")" = bloc de métadonnées recopié → on coupe tout à partir de là.
-        message = re.sub(r'\s+(?:\d+\s*[eè]?\s*)?ann[ée]es?\s*\).*$', '', message, flags=re.IGNORECASE).strip(' -—,')
+        # ── Métadonnées entre parenthèses recopiées dans le titre ────────────────────────────
+        # Beaucoup d'annonceurs collent les métadonnées au titre : "Titre(Matière)(Ne année)
+        # (Salle:X)(N places)". L'OCR garble ces blocs et perd souvent une parenthèse. Comme
+        # matière/salle/année/places sont DÉJÀ extraites en tags, on retire TOUS ces blocs —
+        # complets OU à parenthèse manquante. On ne touche jamais un mot hors parenthèse (la prose
+        # "ouvert à toutes les années" est conservée) ni une parenthèse sans mot-clé méta
+        # ("HDM (Faction - Vampire)" conservé).
+        _MK = (r'(?:ann[ée]es?|salles?|serres?|places?|potions?|sortil[èe]ges?|sorts?|histoires?'
+               r'|botaniq\w*|alchimie|cr[ée]atures?|magiq\w*|m[ée]tamorph\w*|d[ée]fense|duel'
+               r'|musiq\w*|th[ée]oriq\w*|pratiq\w*|golm\w*|dcfm|cms|g[ée]n[ée]ralist\w*|generalist\w*)')
+        message = re.sub(rf'\s*\([^)]*\b{_MK}\b[^)]*\)', ' ', message, flags=re.IGNORECASE)               # bloc complet
+        message = re.sub(rf'\s+(?:\d+\s*[eè]?\s*)?\b{_MK}\b[^()]*\).*$', '', message, flags=re.IGNORECASE)  # parenthèse ouvrante perdue
+        message = re.sub(rf'\s*\([^()]*\b{_MK}\b.*$', '', message, flags=re.IGNORECASE)                    # parenthèse fermante perdue
+        message = re.sub(r'\s{2,}', ' ', message).strip(' -—,')
         # Résidu de délai tronqué en fin de message : "DANS 3" sans "minute(s)" (l'OCR a coupé
         # le template "Dans X minute(s)"). On retire le "Dans [X]" final → le délai reste vide
         # (capture tronquée) plutôt que de polluer le titre. Ex: "Locus Minor Dans" → "Locus Minor".
