@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.165"
+VERSION = "1.5.166"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -2035,7 +2035,47 @@ class App(tk.Tk):
         super().destroy()
 
 
+# Handle du mutex d'instance unique — gardé en global pour que le handle reste ouvert
+# pendant toute la vie du process (Windows libère le mutex automatiquement à la fermeture
+# ou au crash, donc aucun verrou résiduel à nettoyer).
+_SINGLE_INSTANCE_MUTEX = None
+
+
+def _ensure_single_instance():
+    """Empêche le lancement d'une 2e instance du .exe. Utilise un mutex nommé Windows :
+    si une instance tourne déjà, on prévient l'utilisateur et on quitte immédiatement."""
+    global _SINGLE_INSTANCE_MUTEX
+    try:
+        kernel32 = ctypes.windll.kernel32
+        # Nom unique de l'application (session courante). CreateMutexW réussit toujours mais
+        # GetLastError == ERROR_ALREADY_EXISTS (183) si le mutex existait déjà = instance active.
+        _SINGLE_INSTANCE_MUTEX = kernel32.CreateMutexW(None, False, "CoursSW_SingleInstance_Mutex")
+        ERROR_ALREADY_EXISTS = 183
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            try:
+                import tkinter as tk
+                from tkinter import messagebox
+                _r = tk.Tk()
+                _r.withdraw()
+                _r.attributes("-topmost", True)
+                messagebox.showinfo(
+                    "CoursSW est déjà ouvert",
+                    "L'application CoursSW est déjà en cours d'exécution.\n\n"
+                    "Regarde dans la barre des tâches ou la zone de notification "
+                    "(près de l'horloge, en bas à droite).",
+                    parent=_r,
+                )
+                _r.destroy()
+            except Exception:
+                pass
+            sys.exit(0)
+    except Exception:
+        # En cas d'échec inattendu de l'API, on ne bloque pas le lancement.
+        pass
+
+
 def main():
+    _ensure_single_instance()  # une seule instance à la fois
     app = App()
     app.protocol("WM_DELETE_WINDOW", app._hide_window)  # croix = réduire dans le tray
     app.mainloop()
