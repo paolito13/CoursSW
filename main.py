@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.167"
+VERSION = "1.5.168"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1196,14 +1196,16 @@ def parse_announcement(text: str) -> dict | None:
         # parenthèse, ex: "(HDM - Loups-garous … Loup)" → "Loups-garous … Loup")
         message = re.sub(r'^\(\s*[-–]\s*', '', message)
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
-        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9,\.;\-]{2,}\S*\s+', '', message)
+        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9,\.;\-]{2,}\S*\s+(?!\()', '', message)
         # Résidu "initiale + Nom propre" en début (ex: "R Greenshadow Club…" → "Club…")
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
-        message = re.sub(r'^(?:hdm|hmd)\s+', '', message, flags=re.IGNORECASE)  # retire abréviation matière OCR
+        # Retire l'abréviation matière "HDM" en tête SAUF si elle est suivie de "(" : dans ce cas
+        # c'est le titre voulu par l'annonceur (ex: "HDM (Faction - Vampire)"), pas un écho.
+        message = re.sub(r'^(?:hdm|hmd)\s+(?!\()', '', message, flags=re.IGNORECASE)
         message = re.sub(r'^\d*[EÈeè][Mm][Ee]\s+[Aa]nn[eé][ée]?\s*[/\-]?\s*', '', message)  # #176 résidu "Eme Année" en tête
         message = re.sub(r'^[Aa][Nn]\s+(?=[A-ZÀ-Ü])', '', message)  # #166 résidu ".AN X" → "X"
-        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9,\.;\-]{2,}\S*\s+', '', message)  # résidu ALL-CAPS avec ponctuation
+        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9,\.;\-]{2,}\S*\s+(?!\()', '', message)  # résidu ALL-CAPS avec ponctuation
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
         # Fragment de nom d'auteur collé en tête : 1-3 lettres NON-MOT (ex: "IA" de "Heartfilia")
         # suivies de l'article du vrai titre ("Le/La/Les/L'/Un/Une/Des") → on le retire. Le
