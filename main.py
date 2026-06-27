@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.171"
+VERSION = "1.5.172"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1266,6 +1266,10 @@ def parse_announcement(text: str) -> dict | None:
         # Parenthèse d'ANNÉE en fin (métadonnée déjà extraite, ex: "(6E Année)", "(Créature Année)")
         # → on la retire ; "Année" en parenthèse n'est jamais un mot de titre.
         message = re.sub(r'\s*\([^)]*\bann[ée]es?\b[^)]*\)?\s*$', '', message, flags=re.IGNORECASE)
+        # Métadonnée d'année dont la parenthèse OUVRANTE a été perdue par l'OCR : "(6e année)" lu
+        # "année)" (au milieu/fin du titre, suivi d'autres métadonnées comme "(Salle:…)"). Le mot
+        # "année" suivi d'une ")" = bloc de métadonnées recopié → on coupe tout à partir de là.
+        message = re.sub(r'\s+(?:\d+\s*[eè]?\s*)?ann[ée]es?\s*\).*$', '', message, flags=re.IGNORECASE).strip(' -—,')
         # Résidu de délai tronqué en fin de message : "DANS 3" sans "minute(s)" (l'OCR a coupé
         # le template "Dans X minute(s)"). On retire le "Dans [X]" final → le délai reste vide
         # (capture tronquée) plutôt que de polluer le titre. Ex: "Locus Minor Dans" → "Locus Minor".
