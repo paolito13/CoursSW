@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.166"
+VERSION = "1.5.167"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -607,6 +607,13 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bBO[VT]ANIQ[VU]E\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)  # BOVANIQVE (T→V, U→V)
     joined = re.sub(r'\bBOTANIQYE\b', 'BOTANIQUE', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMONOE\b', 'MONDE', joined, flags=re.IGNORECASE)  # "Création du Monoe" (D lu O) — cours récurrent
+    # "Fonkdateur/Fonrdateur" = "Fondateur" (le Fondateur Vert) avec une lettre parasite insérée
+    # par l'OCR. On RETIRE juste la lettre en trop → la casse environnante est préservée (pas
+    # d'îlot tout-MAJ si le texte est déjà en casse mixte).
+    joined = re.sub(r'\b(FON)[KR](DATEUR)\b', r'\1\2', joined, flags=re.IGNORECASE)
+    # "1 FS" = "LES" mal lu (L→1, e→F) — uniquement devant "élèves" (annonce du Fondateur Vert :
+    # "attend les élèves"). Ancré pour éviter tout faux positif.
+    joined = re.sub(r'\b1\s+FS\b(?=\s+[ÉE]L?[èeéEÈÉ]VES?)', 'LES', joined, flags=re.IGNORECASE)
     # "Cabysside/Cabyssioe" = lieu "L'Abysside" mal lu : l'OCR fusionne "L'A" en "Ca" (et parfois
     # D→O). Lieu récurrent des cours Créature Magique. Sortie tout-MAJ → le site title-case en
     # "L'Abysside" (titleIfUpper capitalise après l'apostrophe).
