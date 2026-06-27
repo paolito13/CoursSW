@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.173"
+VERSION = "1.5.174"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -521,6 +521,21 @@ def _smart_title(text: str) -> str:
             core = core.capitalize()
         return pre + core + post
     return ' '.join(_cap(w) for w in text.split())
+
+
+# Caractères du français courant (lettres + accents + ponctuation usuelle). Un token FINAL qui
+# contient autre chose (ò, ø, æ, •, runes d'emoji…) est un emoji/symbole mal lu par l'OCR.
+_FR_CHARS = "a-zA-Z0-9àâäéèêëîïôöùûüÿçœæÀÂÄÉÈÊËÎÏÔÖÙÛÜŸÇŒÆ"
+_FR_PUNCT = r".,;:!?'’\"()«»\-/&%°…\s"
+
+def _strip_emoji_garble(message: str) -> str:
+    """Retire en FIN de message le bruit d'emoji/symbole mal lu (ex: 😊 → 'üò-ee', '•œ').
+    Ne touche jamais le texte français accentué ni un garble qui n'est pas en fin."""
+    if not message:
+        return message
+    message = re.sub(rf'(?:\s+\S*[^{_FR_CHARS}{_FR_PUNCT}]\S*)+\s*$', '', message)
+    message = re.sub(r'\s*[•·]+\s*$', '', message)  # puce orpheline en fin
+    return message.strip(' -—,.')
 
 
 def parse_announcement(text: str) -> dict | None:
@@ -1406,6 +1421,7 @@ def parse_announcement(text: str) -> dict | None:
         # → champ vide plutôt qu'une valeur fausse (ex: "11 EME ANNÉE"). Conforme zéro-faute.
         if year and re.search(r'\b(?:[89]|[1-9]\d)\s*[èeé]?m', year, re.IGNORECASE):
             year = ""
+        message = _strip_emoji_garble(message)  # retire un emoji mal lu en fin (ex: "üò-ee")
         ann: dict = {"type": "cours", "author": author, "message": message}
         if delay:   ann["delay"]   = delay
         if year:    ann["year"]    = year
@@ -1448,6 +1464,7 @@ def parse_announcement(text: str) -> dict | None:
         # CANDIDATS …" → "Vervenini Les Candidats …".
         author = _smart_title(author)
         message = _smart_title(message)
+        message = _strip_emoji_garble(message)  # retire un emoji mal lu en fin (ex: "üò-ee")
 
         if not message:
             return None
