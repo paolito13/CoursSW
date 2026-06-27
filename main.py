@@ -428,6 +428,7 @@ _STOP = (
     r'|[Dd][ée]fense|[Dd]ivination|[Aa]rithmancie|[Ss]oins'
     r'|[Cc]r[eé]ature|[Mm]agique|[Cc]ours|[Hh]istoire|[Ll]itt[eé]rature|[Ll]eague\b'
     r'|[Dd]ernier|[Rr]appel|[Cc]ommence|[Dd][eé]bute|[Aa]nnonce|[Uu]rgent'
+    r'|[Cc]\'[Ee]st|[Cc][Ee]st'
     r'|[Ff]action|[Ee]quipe|[Éé]quipe|[Gg]roupe|[Gg]uilde|[Cc]lan'
     r'|[Ll]a\b|[Ss]aut\b|[Cc]orrespondance|[Nn]umérolog|[Ii]nterpretation|[Ii]nterprétation'
     r'|[Cc]omplot|[Nn]yxie|[Ii]nitiation|[Bb][aâ]timent|[Cc]ouloir|[Mm]onter'
