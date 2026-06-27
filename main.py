@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.168"
+VERSION = "1.5.169"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1196,7 +1196,7 @@ def parse_announcement(text: str) -> dict | None:
         # parenthèse, ex: "(HDM - Loups-garous … Loup)" → "Loups-garous … Loup")
         message = re.sub(r'^\(\s*[-–]\s*', '', message)
         # Résidu de nom d'auteur en début : token ALL-CAPS avec ponctuation (ex: "STERIJ,VG Potion")
-        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9,\.;\-]{2,}\S*\s+(?!\()', '', message)
+        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9\-]*[,\.;][A-ZÀ-Ü0-9,\.;\-]*\S*\s+(?!\()', '', message)
         # Résidu "initiale + Nom propre" en début (ex: "R Greenshadow Club…" → "Club…")
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)
         # Artefacts OCR : lettres minuscules isolées (émojis mal lus → "g", "s"…)
@@ -1205,7 +1205,7 @@ def parse_announcement(text: str) -> dict | None:
         message = re.sub(r'^(?:hdm|hmd)\s+(?!\()', '', message, flags=re.IGNORECASE)
         message = re.sub(r'^\d*[EÈeè][Mm][Ee]\s+[Aa]nn[eé][ée]?\s*[/\-]?\s*', '', message)  # #176 résidu "Eme Année" en tête
         message = re.sub(r'^[Aa][Nn]\s+(?=[A-ZÀ-Ü])', '', message)  # #166 résidu ".AN X" → "X"
-        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9,\.;\-]{2,}\S*\s+(?!\()', '', message)  # résidu ALL-CAPS avec ponctuation
+        message = re.sub(r'^[A-ZÀ-Ü][A-ZÀ-Ü0-9\-]*[,\.;][A-ZÀ-Ü0-9,\.;\-]*\S*\s+(?!\()', '', message)  # résidu ALL-CAPS avec ponctuation
         message = re.sub(r'^[A-ZÀ-Ü]\s+[A-ZÀ-Ü][a-zà-ü]{2,}\s+', '', message)  # initiale + Nom propre
         # Fragment de nom d'auteur collé en tête : 1-3 lettres NON-MOT (ex: "IA" de "Heartfilia")
         # suivies de l'article du vrai titre ("Le/La/Les/L'/Un/Une/Des") → on le retire. Le
@@ -1326,7 +1326,11 @@ def parse_announcement(text: str) -> dict | None:
             if _nd >= 2 or (_nd == 1 and len(_mw[-1]) >= 3):
                 _mw = _mw[:-_nd]
             for _n in (1, 2, 3, 4, 5):  # ordre croissant = écho minimal (ne mange pas un vrai mot du titre)
-                if len(_mw) > _n + 1:
+                # Un écho d'1 mot (la matière seule, ex: "Luridium Sorts" → "Luridium") peut être
+                # retiré même s'il ne reste qu'1 mot ; pour ≥2 mots d'écho on garde la marge de
+                # sécurité (≥2 mots restants) car le risque de manger un vrai mot augmente.
+                _min_left = _n if _n == 1 else _n + 1
+                if len(_mw) > _min_left:
                     _tail = ' '.join(_mw[-_n:])
                     # Vrai écho si la fin, normalisée, redonne la matière ET reste proche
                     # (trigrammes ≥0.6 OU distance d'édition ≤0.4 — la 2e attrape les échos très
@@ -1380,6 +1384,13 @@ def parse_announcement(text: str) -> dict | None:
         if len(author) < 3 or len(message) < 4:
             return None
 
+        # "11"/"111" = chiffres romains "II"/"III" mal lus (les "I" collés ressemblent à des "1").
+        # Les années ne dépassant pas 7, une suite de "1" en début d'année est en réalité un
+        # romain → on convertit (11→2ème, 111→3ème) AVANT le rejet des années > 7.
+        if year:
+            _m1 = re.match(r'^\s*(1{2,3})\s*[eèé]?m', _deaccent(year), re.IGNORECASE)
+            if _m1:
+                year = f"{len(_m1.group(1))}ème année"
         # Année impossible (8ème+ : il n'existe que 1ère→7ème + "Toutes années") = garble OCR
         # → champ vide plutôt qu'une valeur fausse (ex: "11 EME ANNÉE"). Conforme zéro-faute.
         if year and re.search(r'\b(?:[89]|[1-9]\d)\s*[èeé]?m', year, re.IGNORECASE):
