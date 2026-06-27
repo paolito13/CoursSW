@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.174"
+VERSION = "1.5.175"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1278,16 +1278,13 @@ def parse_announcement(text: str) -> dict | None:
         # extraite dans le champ room → on la retire. Ex: "… (Salintude Golmue)" supprimé.
         # parenthèse fermante OPTIONNELLE : l'OCR coupe souvent la fin ("… (Saliecréature").
         message = re.sub(r'\s*\(\s*(?:sal\w*|[ée]tude)\b[^)]*\)?\s*$', '', message, flags=re.IGNORECASE)
-        # ── Métadonnées entre parenthèses recopiées dans le titre ────────────────────────────
-        # Beaucoup d'annonceurs collent les métadonnées au titre : "Titre(Matière)(Ne année)
-        # (Salle:X)(N places)". L'OCR garble ces blocs et perd souvent une parenthèse. Comme
-        # matière/salle/année/places sont DÉJÀ extraites en tags, on retire TOUS ces blocs —
-        # complets OU à parenthèse manquante. On ne touche jamais un mot hors parenthèse (la prose
-        # "ouvert à toutes les années" est conservée) ni une parenthèse sans mot-clé méta
-        # ("HDM (Faction - Vampire)" conservé).
-        _MK = (r'(?:ann[ée]es?|salles?|serres?|places?|potions?|sortil[èe]ges?|sorts?|histoires?'
-               r'|botaniq\w*|alchimie|cr[ée]atures?|magiq\w*|m[ée]tamorph\w*|d[ée]fense|duel'
-               r'|musiq\w*|th[ée]oriq\w*|pratiq\w*|golm\w*|dcfm|cms|g[ée]n[ée]ralist\w*|generalist\w*)')
+        # ── Métadonnées de LIEU/TEMPS/NOMBRE entre parenthèses recopiées dans le titre ───────
+        # Annonceurs collant "(… année)(Salle:X)(N places)" au titre, garblé par l'OCR (parenthèse
+        # perdue). On retire ces blocs — complets OU à parenthèse manquante. ⚠️ On se limite aux
+        # mots-clés lieu/temps/nombre : PAS les matières/types/potions, qui sont souvent du CONTENU
+        # ("Potion (Nanis de Souffle d'Aelyne Pratique)" → conservé). Jamais un mot hors parenthèse
+        # ("…toutes les années" conservé) ni une parenthèse sans mot-clé ("HDM (Faction)" conservé).
+        _MK = r'(?:ann[ée]es?|salles?|serres?|places?|golm\w*|dcfm|cms)'
         message = re.sub(rf'\s*\([^)]*\b{_MK}\b[^)]*\)', ' ', message, flags=re.IGNORECASE)               # bloc complet
         message = re.sub(rf'\s+(?:\d+\s*[eè]?\s*)?\b{_MK}\b[^()]*\).*$', '', message, flags=re.IGNORECASE)  # parenthèse ouvrante perdue
         message = re.sub(rf'\s*\([^()]*\b{_MK}\b.*$', '', message, flags=re.IGNORECASE)                    # parenthèse fermante perdue
