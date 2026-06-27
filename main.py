@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.164"
+VERSION = "1.5.165"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -1166,10 +1166,12 @@ def parse_announcement(text: str) -> dict | None:
         if not year and _year_from_header:
             year = _year_from_header
 
-        # Normalisation finale : "Ere Année" (chiffre "1" perdu par l'OCR) → "1ère Année",
-        # quelle que soit la source (corps ou en-tête)
-        if year and re.match(r'^[eèé]re?\s+ann', _deaccent(year), re.IGNORECASE):
-            year = re.sub(r'^[eèé]re?', '1ère', year, count=1, flags=re.IGNORECASE)
+        # Normalisation finale : "Ere Année" → "1ère Année". Le suffixe "ère" n'est utilisé QUE
+        # par la 1ère année (les autres, 2→7, sont en "ème") → tout chiffre accolé devant "ère"
+        # est un garble OCR (le plus souvent le compteur FPS qui bave : "84fps" → "9 ÈRE ANNÉE",
+        # "237 ÈRE ANNÉE"…). On retire ce chiffre parasite et on force "1ère".
+        if year and re.match(r'^\s*\d*\s*[eèé]re?\s+ann', _deaccent(year), re.IGNORECASE):
+            year = re.sub(r'^\s*\d*\s*[eèé]re?', '1ère', year, count=1, flags=re.IGNORECASE)
 
         # Délai "IMMÉDIATEMENT" (le cours commence tout de suite, pas de "DANS X MINUTES") :
         # c'est un délai valide affiché par le jeu → on le renseigne au lieu de le laisser vide.
