@@ -798,6 +798,18 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\bDANS\s+\d+\s+MINUTES?(?:\(S\))?\b(?=\s+(?:SUR|POUR)\b)', '', joined, flags=re.IGNORECASE)
     # Tronquer apres DANS X MINUTE(S): supprime bas popup FiveM + 2eme annonce visible
     m_delay_full = re.search(r'DANS\s+\d+\s+MINUTES?(?:\(S\))?', joined, re.IGNORECASE)
+    # Normalise le délai : ajoute les parenthèses si absentes (ex: "DANS 5 MINUTE" → "DANS 5 MINUTE(S)")
+    if m_delay_full:
+        delay_raw = m_delay_full.group(0)
+        if not re.search(r'\(S\)', delay_raw, re.IGNORECASE):
+            # Ajoute (S) au mot minute/minutes pour cohérence avec le format attendu
+            m_delay_full = re.search(r'(DANS\s+\d+\s+MINUTES?)', delay_raw, re.IGNORECASE)
+            if m_delay_full:
+                m_delay_full_text = m_delay_full.group(1) + '(S)'
+            else:
+                m_delay_full_text = delay_raw
+        else:
+            m_delay_full_text = delay_raw
     # (le délai est capturé plus loin dans la branche cours via m_delay_full — pas ici : la
     # variable `delay` n'existe pas encore à ce stade)
     joined = re.sub(r'(DANS\s+\d+\s+MINUTES?(?:\(S\))?(?:\s*\([^)]*\))?)\b.*', r'\1', joined, flags=re.IGNORECASE | re.DOTALL)
