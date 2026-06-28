@@ -741,6 +741,8 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\s+11\s*$', ' ', joined)
     # Chiffres orphelins parasites avant DANS (reliquat d'overlay OCR : "rSHDM - Elizabeth Bath 111 X ... DANS")
     joined = re.sub(r'\s+\d{2,}\s+(?:X\s+)?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
+    # Chiffres orphelins avant DIVERS (overlay OCR résiduel : "Edg 07" du widget FiveM)
+    joined = re.sub(r'\s+\d{2,}\s+(?=DIVERS\b)', ' ', joined, flags=re.IGNORECASE)
     # Section icône FiveM "g [MATIÈRE] SALLE [SALLE] [X]" (juste avant DANS/IMMÉDIATEMENT) :
     # c'est l'étiquette du jeu elle-même → source LA PLUS FIABLE pour matière + salle.
     # On la CAPTURE avant de la stripper, pour ne pas avoir à deviner depuis le corps
