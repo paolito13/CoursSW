@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.178"
+VERSION = "1.5.179"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -440,7 +440,7 @@ _STOP = (
     # Tokens d'années (VII, EME, ERE, ANNEE) qui saignent dans l'auteur
     r'|\b(?:VII|VI|V|IV|III|II)\s*[Ee]me\b|[Vv]ii\b|[Ee]me\b|[Éé]me\b|[Ee]re\b|[Éé]re\b|[Aa]nn[eé]e\b|secatr[a-z]*|[Aa]u\b|zito|[Cc][Ll][Ii][Nn][Tt][Aa][Ll][Ii][Ee][Nn]|SILAS|BENNETT|(?:^|\s)(?:[0-9]+\s*)?(?:[eèêé]m[eé]|[eèé]r[eé])\s+ann[eé]e'
     # Tokens OCR parasites tout-caps en début d'auteur (STERIJ, BARJNOV, LENFIEZ.D, etc.)
-    r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]*\.?(?![a-zà-ü]))|[Vv][Oo][Nn]\b|[Bb]ataille\b|[Ll][Oo][Nn][Ww][Ee][Aa][Cc][Xx]'
+    r'|(?:[A-ZÀ-Ü]{2,}[A-ZÀ-Ü0-9]*\.?(?![a-zà-ü]))|[Vv][Oo][Nn]\b|[Bb]ataille\b|[Ll][Oo][Nn][Ww][Ee][Aa][Cc][Xx]|\b(?:III|II)\b'
     r'|[Tt]h[eé]rianthropes?|[Tt]h[eé]rianthrop|[Tt][Hh][ÉéEe][Rr][Ii][Aa][Nn][Tt][Hh][Rr][Oo][Pp][EeÉé][Ss]?'
 )
 
