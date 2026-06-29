@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.185"
+VERSION = "1.5.186"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -351,7 +351,7 @@ def _best_canonical(raw: str, table: list[tuple[str, list[str]]], min_sim: float
 
 # Salles officielles + leurs variantes OCR / abréviations
 _ROOMS: list[tuple[str, list[str]]] = [
-    ('La Cabane',                  ['cabane', 'dans', 'bectrille', 'la bectrille', 'nanis', 'etude de golmu', 'étude de golmue', 'la cabane', 'instritse phtiohs', 'année', 'serre', 'serre 1']),
+    ('La Cabane',                  ['cabane', 'dans', 'bectrille', 'la bectrille', 'nanis', 'etude de golmu', 'la cabane', 'instritse phtiohs', 'année', 'serre', 'serre 1']),
     ('Salle CMS',                  ['cms']),   # le jeu affiche "Salle CMS" (≠ Salle Potions)
     ('Salle Potions',                  ['potion', 'potions', 'salle de potion', 'potions ouvert']),
     ('Salle Créatures Magiques',   ['creature', 'creatur', 'magique', 'magiques', 'salle creature', 'magiwes', 'magiqye', 'magic&jues', 'magic&jues', 'creatures magic', 'maciqye', 'maciqyes', 'maciqje', 'macqje', 'macawe', 'macawes', 'magi(uje', 'magiqje', 'mac,jqje', 'macte', 'macaques', 'cabysside', 'terragor']),
