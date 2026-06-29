@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.184"
+VERSION = "1.5.185"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -740,7 +740,9 @@ def parse_announcement(text: str) -> dict | None:
     joined = re.sub(r'\b11(?:\s+(?:X|ANNÉE|ann[eé]e))?\s+(?=DANS\b|$)', ' ', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\s+11\s*$', ' ', joined)
     # Chiffres orphelins parasites avant DANS (reliquat d'overlay OCR : "rSHDM - Elizabeth Bath 111 X ... DANS")
+    # Aussi en début de payload OCR brut : "14 : LE RP MAOIC" → retire "14 : "avant traitement
     joined = re.sub(r'\s+\d{2,}\s+(?:X\s+)?(?=DANS\b)', ' ', joined, flags=re.IGNORECASE)
+    joined = re.sub(r'^\s*\d{1,3}\s*:\s+', '', joined, flags=re.IGNORECASE)
     # Chiffres orphelins avant DIVERS (overlay OCR résiduel : "Edg 07" du widget FiveM)
     joined = re.sub(r'\s+\d{2,}\s+(?=DIVERS\b)', ' ', joined, flags=re.IGNORECASE)
     # Section icône FiveM "g [MATIÈRE] SALLE [SALLE] [X]" (juste avant DANS/IMMÉDIATEMENT) :
