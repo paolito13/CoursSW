@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.186"
+VERSION = "1.5.187"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -364,7 +364,7 @@ _ROOMS: list[tuple[str, list[str]]] = [
     ('Salle Généraliste',          ['generaliste', 'general', 'generalist', 'generauste', 'generau', 'generaliete', 'classe generaliste', 'classe general', 'sat f general', '11 x club', '11x', 'x club', 'duel league', 'duel en groupe', 'capture de zone', 'saile generausie', 'saile generau', 'generausie', 'salle generauste', 'dans generauste', 'club serre', 'saile generausie dans', 'potions', 'potions serre', 'serre 1', 'eme annee', 'annee annonce', 'au balai', 'balai', 'club de duel', 'club pour', 'club salle', 'musique club']),
     ('Salle Potions',              ['salle potion', 'salle potions', 'potion', 'potions']),
     ('Salle de Duel',              ['duel', 'tolte', 'tour', 'tou-u-r', 'saue', 'musiqye', 'ft-1palto', 'ft-1palt', 'duel pour', 'lorica', 'lorica g', 'g', 'voltumb', 'voltumbfua', 'dans', 'dans5', 'cheminee', 'cheminée', 'tour uastronomie', 'de duel', 'detonaris', 'rjnr']),
-    ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature', 'litteratur', 'fiqa', 'informis', 'divers', 'cuisine']),
+    ('Salle de Littérature',       ['litter', 'littera', 'litterature', 'litteratur', 'literature', 'litteratur', 'fiqa', 'informis', 'divers', 'cuisine', 'oivers']),
     ("Salle d'Étude de Golmue",    ['golmue', 'golmu', 'golmve', 'etude de golm', 'study', 'golmus', 'sai e', 'sai', 'generaliste', 'etude', 'oivers', 'divers']),
 ]
 
