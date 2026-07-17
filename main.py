@@ -1,4 +1,4 @@
-﻿"""
+"""
 CourSW.exe — Observateur d'annonces FiveM pour Seven Wands
 Détecte automatiquement FiveM, capture les annonces, les envoie au site.
 Compatible Windows 10/11. Aucune installation manuelle requise.
@@ -115,7 +115,7 @@ except ImportError:
     _USE_TESSERACT = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-VERSION = "1.5.187"
+VERSION = "1.5.188"
 SITE_URL       = "https://almanach-peh.vercel.app"
 API_LINK       = f"{SITE_URL}/api/cours/link"
 API_HEARTBEAT  = f"{SITE_URL}/api/cours/heartbeat"
@@ -655,6 +655,10 @@ def parse_announcement(text: str) -> dict | None:
     # Variantes OCR de DANS (déclencheur du délai) : OANS/0ANS (D→O/0), DAN5/DANJ (S→5/J),
     # DAMS (N→M) — uniquement quand suivi d'un nombre, pour éviter les faux positifs
     joined = re.sub(r'\b[D0O]A[NM][S5J]\b(?=\s+\d)', 'DANS', joined, flags=re.IGNORECASE)
+    # "DANS5" colle (pas d'espace avant le nombre) -> "DANS 5" pour extraire le delai
+    joined = re.sub(r'\bDANS(?=\d)', 'DANS ', joined, flags=re.IGNORECASE)
+    # nombre colle a MINUTE ("DANS 5MINUTE(S)") -> espace avant l'unite
+    joined = re.sub(r'(\bDANS\s+\d+)(?=MIN)', r'\1 ', joined, flags=re.IGNORECASE)
     # Variantes OCR de MINUTE(S) : MINUTEtS) / MINUTECS) / MINUJE(S) / Minutecs
     joined = re.sub(r'\bMINUTEtS\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
     joined = re.sub(r'\bMINUTECS\)', 'MINUTE(S)', joined, flags=re.IGNORECASE)
