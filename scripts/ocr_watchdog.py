@@ -112,6 +112,7 @@ KNOWN_ROOMS = [
     "transfiguration", "defense", "magie", "histoire", "arithmancie", "divination",
     "soins", "creatures", "medecine", "infirmerie", "biblioth", "cheminee", "toilettes",
     "generaliste", "arts", "musique", "litterature", "runic", "occlumence",
+    "cabane", "duel", "terrain", "foret", "donjon", "tour", "bectrille", "cour",
 ]
 
 def hardcoded_anomalies(ann: dict) -> list[str]:
@@ -232,10 +233,24 @@ def create_issue(aid: str, ann: dict, anomalie: str, ocr_log: str | None) -> Non
 ---
 *Créé automatiquement par OCR Watchdog — à corriger dans `main.py`*
 """
+    title = f"[OCR] {anomalie[:80]}"
+    # Deduplication : si une issue OUVERTE au titre identique existe deja, on ne recree pas
+    # (evite l'accumulation de centaines d'anomalies recurrentes type "delay manquant").
+    try:
+        existing = subprocess.run(
+            ["gh", "issue", "list", "--repo", "paolito13/CoursSW", "--state", "open",
+             "--label", "ocr-anomaly", "--search", title, "--json", "title", "--limit", "50"],
+            capture_output=True, text=True)
+        if existing.returncode == 0 and any(
+                it.get("title") == title for it in json.loads(existing.stdout or "[]")):
+            print(f"  skip issue deja ouverte : {title}")
+            return
+    except Exception:
+        pass
     result_gh = subprocess.run(
         ["gh", "issue", "create",
          "--repo", "paolito13/CoursSW",
-         "--title", f"[OCR] {anomalie[:80]}",
+         "--title", title,
          "--body", issue_body,
          "--label", "ocr-anomaly"],
         capture_output=True, text=True
